@@ -72,10 +72,22 @@ export function groupChecklists(rows) {
     groups.get(row.locId).rows.push(record);
   }
   return [...groups.values()].map(group => {
-    group.rows.sort((a, b) => b.date.localeCompare(a.date));
+    const timestamp = row => row.date.length === 16 ? `${row.date}:00` : row.date;
+    group.rows.sort((a, b) => timestamp(b).localeCompare(timestamp(a)));
+    const originalRows = group.rows;
+    const merged = new Map();
+    for (const row of originalRows) {
+      // A date without a valid time/species count cannot establish a match.
+      const canMerge = row.date.includes('T') && Number.isInteger(row.numSpecies) && row.numSpecies >= 0;
+      const time = timestamp(row);
+      const key = canMerge ? `${time}|${row.numSpecies}` : Symbol();
+      if (!merged.has(key)) merged.set(key, { ...row, participants: [] });
+      merged.get(key).participants.push({ name: row.userDisplayName || '未提供', subId: row.subId });
+    }
+    group.rows = [...merged.values()];
     const latest = group.rows[0].date.slice(0, 10);
     const day = latest ? group.rows.filter(r => r.date.slice(0, 10) === latest) : [];
     const species = day.map(r => r.numSpecies).filter(n => Number.isInteger(n) && n >= 0);
-    return { ...group, count: group.rows.length, observers: new Set(group.rows.map(r => r.userDisplayName).filter(Boolean)).size, latest, dayCount: day.length, average: species.length ? Math.round(species.reduce((a, b) => a + b, 0) / species.length) : null };
+    return { ...group, count: group.rows.length, checklistCount: originalRows.length, observers: new Set(originalRows.map(r => r.userDisplayName).filter(Boolean)).size, latest, dayCount: day.length, average: species.length ? Math.round(species.reduce((a, b) => a + b, 0) / species.length) : null };
   }).sort((a, b) => b.count - a.count || b.rows[0].date.localeCompare(a.rows[0].date) || a.id.localeCompare(b.id));
 }

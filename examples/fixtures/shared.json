@@ -1,0 +1,6 @@
+[
+  {"subId":"S901","locId":"L900","loc":{"name":"同行賞鳥示範地點","isHotspot":true},"obsDt":"2026-09-24","obsTime":"06:30","userDisplayName":"鳥友甲","numSpecies":18},
+  {"subId":"S902","locId":"L900","loc":{"name":"同行賞鳥示範地點","isHotspot":true},"obsDt":"2026-09-24","obsTime":"06:30","userDisplayName":"鳥友乙","numSpecies":18},
+  {"subId":"S903","locId":"L900","loc":{"name":"同行賞鳥示範地點","isHotspot":true},"obsDt":"2026-09-24","obsTime":"06:30","userDisplayName":"鳥友丙","numSpecies":18},
+  {"subId":"S904","locId":"L900","loc":{"name":"同行賞鳥示範地點","isHotspot":true},"obsDt":"2026-09-24","obsTime":"07:30","userDisplayName":"鳥友甲","numSpecies":24}
+]

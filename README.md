@@ -13,8 +13,8 @@ eBird 最近熱門地點網站。production 使用官方 API，前端不接觸 A
 - 每個地區最多最近 200 筆，不是該日完整調查。全台獨立擷取，並非縣市清單聯集。快照日期與觀察日期不同。
 - 台灣時間一日一檔，同日重跑覆寫、保留歷史。全部請求成功才寫檔及發布；失敗保留既有網站。網路、429、5xx 最多嘗試三次，其他 HTTP 錯誤立即失敗。
 - 日期索引的 `latest` 指向最新日期；未指定 date 或 `date=latest` 都使用 latest。未知日期／地區顯示錯誤。
-- 依地點 ID 分組、清單 ID 去重，以紀錄數及最近日期排序。鳥友數為不同顯示名稱數；平均鳥種不是鳥種聯集。個人地點不產生 hotspot 連結。
-- 畫面沿用原版六欄比較表，左側固定對齊紀錄／人、最近日期、平均鳥種／紀錄，右側為地點與可展開的清單。中英並列地點隱藏括號內的英文翻譯，滑鼠提示保留完整 API 名稱；只有英文的名稱照原文顯示，不猜譯。
+- 依地點 ID 分組、清單 ID 去重，同地點、完整觀察時間、鳥種數相同的清單合併為一筆紀錄（缺時間或鳥種數不合併），以合併後紀錄數及最近日期排序。鳥友數為不同顯示名稱數；平均鳥種不是鳥種聯集。個人地點不產生 hotspot 連結。
+- 畫面沿用原版比較表，新增最右側 eBird 地點欄，左側固定對齊紀錄／人、最近日期、平均鳥種／紀錄，右側地點名稱和箭頭共同作為展開按鈕。日期連至合併組第一人的清單，各鳥友連至自己的清單；鳥種數只顯示數字。紀錄數、當日筆數和平均皆以合併後計算，人數保留所有不同鳥友名稱。所有外部連結另開分頁／視窗並顯示 ↗；個人地點無公開 hotspot 頁，請由清單查看。中英並列地點隱藏括號內的英文翻譯，滑鼠提示保留完整 API 名稱；只有英文的名稱照原文顯示，不猜譯。
 
 參考：[官方 eBird API 文件](https://documenter.getpostman.com/view/664302/S1ENwy59)。
 
@@ -46,11 +46,13 @@ python -m http.server 8000 --bind 127.0.0.1
 
 ## GitHub Actions / Pages
 
-1. 新 repo Settings → Secrets and variables → Actions 新增 `EBIRD_API_KEY` secret。
+1. 新 repo Settings → Secrets and variables → Actions 在 **Env** environment 新增 `EBIRD_API_KEY` secret（也支援 repository secret）。
 2. Settings → Pages → Source 選 **GitHub Actions**。`christorng.idv.tw` 使用者 Pages 網域與 DNS 須已設定；本專案不放 CNAME。
 3. Workflow 需 contents write、pages write、id-token write；若保護 data branch，需允許 Actions 更新。
 4. Push main、手動 workflow_dispatch，或台灣每日 06:00（UTC `0 22 * * *`）執行。GitHub 定時排程可能延遲。
 
-Workflow 先測試，準備 data branch，擷取、build、提交 data 後將 `_site` 部署至 `/eBirdRecentHotspot/`。流程序列化避免同時覆寫。data push 不觸發此 workflow。首次缺 key 會失敗，不會以範例替代 production。若部署失敗可手動重跑，當日資料會重新抓取覆寫。
+Workflow 的 `collect` job 使用 **Env** environment 讀取金鑰、測試、準備 data branch、擷取、build、提交 data 並上傳 Pages artifact；`deploy` job 等待成功後，使用 **github-pages** environment 將同一 artifact 部署至 `/eBirdRecentHotspot/`。流程序列化避免同時覆寫。data push 不觸發此 workflow。首次缺 key 會失敗，不會以範例替代 production。若部署失敗可手動重跑，當日資料會重新抓取覆寫。
 
 此專案取代 [舊 eBird 的 recent-hotspots](https://github.com/ChrisTorng/eBird)，舊 repo 保留 alerts 與搬遷入口。
+
+若顯示「請設定 EBIRD_API_KEY」但已建立 secret，請確認 environment 名稱：Environment secrets 只提供給引用該 environment 的 job；`Env` 的金鑰不會提供給 `github-pages`。本 workflow 已分開兩個 job，無需搬移金鑰。變更推送後啟動新的 workflow run；重跑舊 run 仍會使用舊版 workflow。
