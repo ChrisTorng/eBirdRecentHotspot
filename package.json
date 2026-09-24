@@ -1,0 +1,12 @@
+{
+  "name": "ebird-recent-hotspot",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "node --test",
+    "collect": "node scripts/collect.mjs",
+    "examples": "node scripts/examples.mjs",
+    "build": "node scripts/build.mjs"
+  }
+}

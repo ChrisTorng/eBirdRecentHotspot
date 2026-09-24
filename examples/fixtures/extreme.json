@@ -1,0 +1,9 @@
+[
+ {"subId":"S4","locId":"L3","loc":{"name":"<img src=x onerror=alert(1)> & 超長地名：這是一份測試資料，不是真實觀察紀錄","isHotspot":true},"obsDt":"2025-12-31","obsTime":"23:59","userDisplayName":"<script>alert(1)</script>","numSpecies":0},
+ {"subId":"S5","locId":"L3","loc":{"name":"更名"},"obsDt":"2026-01-01","numSpecies":1000},
+ {"subId":"S5","locId":"L3","loc":{"name":"重複"},"obsDt":"2026-01-01","numSpecies":1000},
+ {"subId":"S6","locId":"L4","loc":{"name":"同名地點"},"obsDt":"invalid","numSpecies":null},
+ {"subId":"S7","locId":"L5","loc":{"name":"同名地點"},"numSpecies":-1},
+ {"subId":"S8","locId":"L6","loc":{},"obsDt":"2026-01-01","numSpecies":"12"},
+ null, {}
+]

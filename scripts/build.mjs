@@ -1,0 +1,10 @@
+import { cp, mkdir, readFile } from 'node:fs/promises';
+import { resolve } from 'node:path';
+const source = resolve(process.argv[2] || '.local-data');
+const target = resolve('_site');
+const index = JSON.parse(await readFile(resolve(source, 'index.json'), 'utf8'));
+if (!index.dates?.includes(index.latest)) throw new Error('Invalid data index');
+await mkdir(target, { recursive: true });
+for (const file of ['index.html', 'index.css', 'app.js', 'model.js']) await cp(file, resolve(target, file));
+await cp(source, resolve(target, 'data'), { recursive: true, filter: path => !path.includes('.git') && !path.endsWith('.tmp') });
+console.log('Built _site (serve its parent to test /_site/ project paths).');

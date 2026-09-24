@@ -1,0 +1,66 @@
+name: Collect and publish
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: '0 22 * * *' # Taiwan 06:00
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+concurrency:
+  group: collect-and-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm test
+      - name: Prepare data branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git ls-remote --exit-code --heads origin data; then
+            git fetch origin data
+            git worktree add -b data .data-worktree FETCH_HEAD
+          else
+            status=$?
+            if [ "$status" -ne 2 ]; then exit "$status"; fi
+            git worktree add --detach .data-worktree
+            git -C .data-worktree switch --orphan data
+          fi
+      - name: Collect all Taiwan regions
+        env:
+          EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
+        run: node scripts/collect.mjs .data-worktree/data
+      - name: Build static site
+        run: node scripts/build.mjs .data-worktree/data
+      - name: Save complete snapshot
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -C .data-worktree add data
+          if ! git -C .data-worktree diff --cached --quiet; then
+            git -C .data-worktree commit -m "Update Taiwan checklist snapshot"
+            git -C .data-worktree push origin HEAD:data
+          fi
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - name: Deploy Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

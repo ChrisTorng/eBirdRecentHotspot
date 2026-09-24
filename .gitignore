@@ -1,0 +1,6 @@
+.local-data/
+.data-worktree/
+_site/
+node_modules/
+.env
+.env.*
