@@ -1,3 +1,44 @@
+// Keep the original site's Traditional Chinese labels and region order.
+export const TAIWAN_REGIONS = [
+  ['TW', '台灣'], ['TW-TPE', '臺北市'], ['TW-TPQ', '新北市'],
+  ['TW-TAO', '桃園市'], ['TW-TXG', '臺中市'], ['TW-TNN', '臺南市'],
+  ['TW-KHH', '高雄市'], ['TW-KEE', '基隆市'], ['TW-HSZ', '新竹市'],
+  ['TW-HSQ', '新竹縣'], ['TW-MIA', '苗栗縣'], ['TW-CHA', '彰化縣'],
+  ['TW-NAN', '南投縣'], ['TW-YUN', '雲林縣'], ['TW-CYI', '嘉義市'],
+  ['TW-CYQ', '嘉義縣'], ['TW-PIF', '屏東縣'], ['TW-ILA', '宜蘭縣'],
+  ['TW-HUA', '花蓮縣'], ['TW-TTT', '臺東縣'], ['TW-PEN', '澎湖縣'],
+  ['TW-KIN', '金門縣'], ['TW-LIE', '連江縣']
+].map(([code, name]) => ({ code, name }));
+export function displayRegions(regions) {
+  const available = new Map(regions.map(region => [region.code, region]));
+  const known = new Set(TAIWAN_REGIONS.map(region => region.code));
+  return [
+    ...TAIWAN_REGIONS.filter(region => available.has(region.code)),
+    ...regions.filter(region => !known.has(region.code))
+  ];
+}
+export function displayLocationName(value) {
+  const name = String(value || '未命名地點');
+  if (!/\p{Script=Han}/u.test(name)) return name;
+  // Remove English translations in parentheses, retaining Chinese qualifiers,
+  // numeric coordinates, and the complete API name in the link's tooltip.
+  let result = '', start = -1, depth = 0;
+  for (let i = 0; i < name.length; i++) {
+    const char = name[i];
+    if (char === '(' || char === '（') {
+      if (depth === 0) start = i;
+      depth++;
+    } else if ((char === ')' || char === '）') && depth > 0) {
+      depth--;
+      if (depth === 0) {
+        const content = name.slice(start, i + 1);
+        if (/\p{Script=Han}/u.test(content) || !/[a-z]/i.test(content)) result += content;
+      }
+    } else if (depth === 0) result += char;
+  }
+  if (depth) result += name.slice(start);
+  return result.trim() || name;
+}
 export function dataRoot(page) {
   const url = new URL(page);
   const mode = url.searchParams.get('data');

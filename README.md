@@ -9,11 +9,12 @@ eBird 最近熱門地點網站。production 使用官方 API，前端不接觸 A
 - `main`：固定 HTML/CSS/JS、scripts、tests、可提交的 examples。
 - `data` branch：`data/index.json` 與 `data/snapshots/YYYY-MM-DD.json`，由 Actions 首次執行時建立。
 - Snapshot 含 `schemaVersion`、台灣日期 `date`、UTC 擷取時間 `fetchedAt`、`regions` 及依 region code 分組的 `checklists` 原始 API 陣列。
-- 先用 `/v2/ref/region/list/subnational1/TW?fmt=json` 取得所有縣市，再抓 `TW` 及每個回傳地區的 `/v2/product/lists/{regionCode}?maxResults=200`。地區名稱以 API 回應為準。
+- 先用 `/v2/ref/region/list/subnational1/TW?fmt=json` 取得所有縣市，再抓 `TW` 及每個回傳地區的 `/v2/product/lists/{regionCode}?maxResults=200`。快照保留 API 原始名稱；前端使用原版的繁體中文縣市名稱與順序（台灣、六都、其餘縣市、離島），只列出該快照提供的地區。
 - 每個地區最多最近 200 筆，不是該日完整調查。全台獨立擷取，並非縣市清單聯集。快照日期與觀察日期不同。
 - 台灣時間一日一檔，同日重跑覆寫、保留歷史。全部請求成功才寫檔及發布；失敗保留既有網站。網路、429、5xx 最多嘗試三次，其他 HTTP 錯誤立即失敗。
 - 日期索引的 `latest` 指向最新日期；未指定 date 或 `date=latest` 都使用 latest。未知日期／地區顯示錯誤。
 - 依地點 ID 分組、清單 ID 去重，以紀錄數及最近日期排序。鳥友數為不同顯示名稱數；平均鳥種不是鳥種聯集。個人地點不產生 hotspot 連結。
+- 畫面沿用原版六欄比較表，左側固定對齊紀錄／人、最近日期、平均鳥種／紀錄，右側為地點與可展開的清單。中英並列地點隱藏括號內的英文翻譯，滑鼠提示保留完整 API 名稱；只有英文的名稱照原文顯示，不猜譯。
 
 參考：[官方 eBird API 文件](https://documenter.getpostman.com/view/664302/S1ENwy59)。
 

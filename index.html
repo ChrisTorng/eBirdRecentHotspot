@@ -9,14 +9,24 @@
 </head>
 <body>
   <main>
-    <h1>eBird 最近熱門地點</h1>
-    <p>依各地區最近 200 筆公開清單彙整，並非當日完整調查或鳥種聯集。每日台灣時間 06:00 更新。</p>
-    <form id="filters"><label>資料日期 <select id="date" name="date"></select></label> <label>地區 <select id="region" name="location"></select></label></form>
-    <p id="status" role="status" aria-live="polite">載入中…</p>
-    <button id="retry" hidden>重試</button>
-    <nav aria-label="展開控制"><button id="expand">全部展開</button> <button id="collapse">全部收合</button></nav>
-    <section id="results" aria-label="地點紀錄"></section>
-    <p><a id="source" href="https://ebird.org/region/TW/recent-checklists">eBird 最新紀錄</a> · <a href="https://github.com/ChrisTorng/eBirdRecentHotspot">GitHub 原始碼</a></p>
+    <header class="hero">
+      <div><p class="eyebrow"><span class="brand-mark" aria-hidden="true">◈</span> eBird 台灣觀鳥紀錄</p>
+      <h1>最近熱門地點</h1><p class="intro">看看最近大家都去哪裡賞鳥。</p></div>
+      <span class="update-badge"><span aria-hidden="true">●</span> 每日 06:00 更新</span>
+    </header>
+    <section class="filter-panel" aria-label="篩選資料">
+      <form id="filters"><label>資料日期 <select id="date" name="date"></select></label><label class="region-select">地區 <select id="region" name="location"></select></label></form>
+      <nav id="regions" aria-label="選擇縣市"></nav>
+    </section>
+    <section class="results-panel" aria-label="地點紀錄">
+      <div class="results-heading"><div><h2><span id="region-title">台灣</span><span class="heading-divider">/</span>熱門地點</h2><p id="summary"></p></div>
+        <nav class="table-actions" aria-label="展開控制"><button id="expand">全部展開</button><button id="collapse">全部收合</button></nav>
+      </div>
+      <div id="results"></div>
+      <div class="status-bar"><p id="status" role="status" aria-live="polite">載入中…</p><button id="retry" hidden>重試</button></div>
+    </section>
+    <footer><p>各地區最近 200 筆公開清單，依紀錄數排序。同筆數以最新觀察時間優先。<br>「人」以不同鳥友名稱計算；平均鳥種為該地點最近一天的平均，並非鳥種聯集。</p>
+      <p><a id="source" href="https://ebird.org/region/TW/recent-checklists">eBird 最新紀錄 ↗</a><a href="https://github.com/ChrisTorng/eBirdRecentHotspot">GitHub 原始碼 ↗</a></p></footer>
   </main>
 </body>
 </html>
