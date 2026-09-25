@@ -88,4 +88,6 @@ if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1]
     await saveSnapshot(resolve(process.argv[2] || '.local-data'), snapshot);
     console.log(`Saved ${snapshot.date}: ${Object.keys(snapshot.coverage).length} regions; capped: ${Object.entries(snapshot.coverage).filter(([, value]) => value.possiblyTruncated).map(([code]) => code).join(', ') || 'none'}`);
   }
+  const { buildSummaries } = await import('./summaries.mjs');
+  await buildSummaries(resolve(process.argv[2] || '.local-data'));
 }

@@ -1,3 +1,4 @@
+import { heatForLocation, compareHeat, scoringDates } from './heat.js';
 import { dataRoot, loadJson, selectDate, groupChecklists, displayRegions, displayLocationName, dateRange, rangeRows, googleMapsUrl } from './model.js';
 const $ = id => document.getElementById(id);
 const page = new URL(window.location.href), root = dataRoot(page);
@@ -33,100 +34,98 @@ function renderRegions(regions, current) {
     return a;
   }));
 }
-function pair(first, second) {
-  const span = element('span', null, 'metric-pair');
-  span.append(element('strong', first), element('span', '/', 'separator'), element('span', second, 'secondary-number'));
-  return span;
+function shortDate(date) { return date ? `${Number(date.slice(5, 7))}/${Number(date.slice(8, 10))}` : '—'; }
+const heatNumber = value => value === null ? '—' : value.toLocaleString('zh-TW', { maximumFractionDigits: 2 });
+function svgNode(tag, attributes, text) {
+  const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+  for (const [name, value] of Object.entries(attributes)) node.setAttribute(name, value);
+  if (text != null) node.textContent = text;
+  return node;
 }
-function shortDate(date) { return date ? `${Number(date.slice(5, 7))}/${date.slice(8, 10)}` : '—'; }
+function pointLabel(p) {
+  return `${p.date}：${p.value === null ? '資料不足' : heatNumber(p.value)}${p.quality === 'partial' ? '（不完整）' : ''}${p.today ? '（今日未完整，不計分）' : ''}`;
+}
+function curve(series) {
+  const figure = element('figure', null, 'heat-curve');
+  const svg = svgNode('svg', { viewBox: '0 0 280 64', role: 'img', 'aria-label': '每日熱度：' + series.map(pointLabel).join('；') });
+  const max = Math.max(1, ...series.map(p => p.value || 0));
+  const x = i => 8 + i * 264 / 13, y = v => 48 - v / max * 36;
+  svg.append(svgNode('path', { d: 'M8 48H272', stroke: '#cddbcc', fill: 'none' }));
+  series.forEach((p, i) => {
+    if (p.value === null) return;
+    const previous = series[i - 1];
+    if (previous?.value !== null && previous !== undefined) svg.append(svgNode('path', {
+      d: `M${x(i-1)} ${y(previous.value)}L${x(i)} ${y(p.value)}`, fill: 'none', stroke: '#398669', 'stroke-width': 2,
+      'stroke-dasharray': p.today || p.quality !== 'complete' || previous.quality !== 'complete' ? '3 3' : 'none'
+    }));
+    const circle = svgNode('circle', { cx: x(i), cy: y(p.value), r: 3, fill: p.today || p.quality !== 'complete' ? '#fff' : '#245e48', stroke: '#245e48' });
+    circle.append(svgNode('title', {}, pointLabel(p))); svg.append(circle);
+  });
+  svg.append(svgNode('text', { x: 8, y: 62 }, shortDate(series[0].date)), svgNode('text', { x: 272, y: 62, 'text-anchor': 'end' }, shortDate(series.at(-1).date)), svgNode('text', { x: 272, y: 9, 'text-anchor': 'end' }, `最高 ${heatNumber(max)}`));
+  figure.append(svg); return figure;
+}
 function render(groups) {
   toggles = [];
-  if (!groups.length) {
-    $('results').replaceChildren(element('p', '此地區目前沒有最近紀錄。可切換其他地區或資料日期。', 'empty-state'));
-    return;
-  }
+  if (!groups.length) { $('results').replaceChildren(element('p', '所選範圍沒有已取得的紀錄，可切換地區或日期。', 'empty-state')); return; }
   const table = element('table', null, 'hotspot-table');
-  table.append(element('caption', '依紀錄數排序的最近熱門地點；展開地點可查看各筆清單。', 'sr-only'));
-  const columns = element('colgroup');
-  for (const name of ['count-col', 'latest-col', 'average-col', 'species-col', 'date-col', 'observer-col', 'ebird-col', 'map-col']) columns.append(element('col', null, name));
-  table.append(columns);
-  const head = element('thead'), header = element('tr');
-  for (const [title, hint, className] of [
-    ['紀錄 / 人', '清單數 / 不同鳥友名稱', 'numeric'],
-    ['最近日期', '此地點最新觀察日', 'date-cell'],
-    ['平均鳥種 / 紀錄', '最近日平均 / 清單數', 'numeric'],
-    ['鳥種', '單筆', 'numeric'], ['日期', '觀察時間', 'date-cell'], ['鳥友名', '各人清單', ''], ['鳥點', '另開新視窗', 'ebird-cell'], ['地圖', 'Google Maps', 'map-cell']
-  ]) {
-    const th = element('th', null, className); th.scope = 'col';
-    th.append(element('span', title), element('small', hint)); header.append(th);
-  }
-  head.append(header); table.append(head);
+  table.append(element('caption', '依近期熱度排序；資料不足的鳥點列於其後。展開可看統計與清單。', 'sr-only'));
+  const header = element('tr');
+  for (const text of ['鳥點名稱', '近期熱度', '每日熱度 · 14 天', '鳥點', '地圖']) { const th = element('th', text); th.scope = 'col'; header.append(th); }
+  const head = element('thead'); head.append(header); table.append(head);
   groups.forEach((group, index) => {
-    const body = element('tbody', null, 'location-group');
-    const tr = element('tr', null, 'group-row');
-    const count = element('td', null, 'count-cell numeric');
-    count.append(pair(group.count, group.observers));
-    const latest = element('td', shortDate(group.latest), 'date-cell latest-cell'); latest.title = group.latest || '日期不明';
-    const average = element('td', null, 'numeric average-cell'); average.append(pair(group.average ?? '—', group.dayCount));
-    const location = element('th', null, 'location-cell'); location.colSpan = 3; location.scope = 'row';
-    const displayName = displayLocationName(group.name);
-    const button = element('button', null, 'toggle-group'); button.type = 'button';
-    button.title = group.name;
+    const body = element('tbody', null, 'location-group'), row = element('tr', null, 'group-row');
+    const name = element('th', null, 'location-cell'); name.scope = 'row';
+    const button = element('button', null, 'toggle-group'); button.type = 'button'; button.title = group.name;
     const arrow = element('span', '▸', 'toggle-icon'); arrow.setAttribute('aria-hidden', 'true');
-    const action = element('span', '展開', 'toggle-label');
-    button.append(arrow, element('span', displayName, 'location-name'), action);
-    location.append(button);
-    const ebird = element('td', null, 'ebird-cell');
-    if (group.hotspot) ebird.append(link('鳥點', `https://ebird.org/hotspot/${encodeURIComponent(group.id)}/bird-list?yr=curM`));
-    else {
-      const representative = group.rows.find(row => row.subId);
-      if (representative) ebird.append(link('個人鳥點', `https://ebird.org/checklist/${encodeURIComponent(representative.subId)}`));
-      else ebird.textContent = '個人鳥點';
-      ebird.title = '個人鳥點：透過最新清單查看地點資訊';
-    }
-    const map = element('td', null, 'map-cell');
+    button.append(arrow, element('span', displayLocationName(group.name), 'location-name')); name.append(button);
+    const score = element('td', null, 'heat-cell');
+    score.append(element('strong', heatNumber(group.heat.score)), element('small', group.heat.score === null ? '資料不足' : '近期熱度'));
+    score.title = `評分日期：${group.heat.scoreDays.join('、')}；權重 50%、30%、20%。缺日、上限或缺鳥友名稱時不計分。`;
+    const graph = element('td', null, 'curve-cell'); graph.append(curve(group.heat.series));
+    const bird = element('td', null, 'bird-cell'), map = element('td', null, 'map-cell');
+    if (group.hotspot) bird.append(link('鳥點', `https://ebird.org/hotspot/${encodeURIComponent(group.id)}/bird-list?yr=curM`));
+    else { const person = group.rows.find(r => r.subId); bird.append(person ? link('個人鳥點', `https://ebird.org/checklist/${encodeURIComponent(person.subId)}`) : element('span', '個人鳥點')); bird.title = '透過最新清單查看個人鳥點'; }
     const mapUrl = googleMapsUrl(group.coordinates);
     if (mapUrl) map.append(link('地圖', mapUrl));
-    else { map.append(element('span', '地圖', 'unavailable')); map.title = '尚無座標，待此地點重新擷取後提供地圖'; }
-    tr.append(count, latest, average, location, ebird, map); body.append(tr);
-    const detailRows = group.rows.map((row, rowIndex) => {
-      const detail = element('tr', null, 'detail-row'); detail.id = `detail-${index}-${rowIndex}`; detail.hidden = true;
-      const blank = element('td', null, 'detail-indent'); blank.colSpan = 3;
-      const speciesCell = element('td', null, 'numeric');
-      const species = Number.isInteger(row.numSpecies) && row.numSpecies >= 0 ? row.numSpecies : '—';
-      speciesCell.textContent = species;
-      const date = element('td', null, 'date-cell'); date.title = row.date;
-      const dateText = row.date ? `${shortDate(row.date)}${row.date.includes('T') ? ' ' + row.date.slice(11, 16) : ''}` : '日期不明';
-      date.append(row.subId ? link(dateText, `https://ebird.org/checklist/${encodeURIComponent(row.subId)}`) : element('span', dateText));
-      const observers = element('td', null, 'observer-cell');
-      row.participants.forEach((person, personIndex) => {
-        if (personIndex) observers.append(document.createTextNode('、'));
-        observers.append(row.participants.length > 1 && person.subId ? link(person.name, `https://ebird.org/checklist/${encodeURIComponent(person.subId)}`) : element('span', person.name));
-      });
-      detail.append(blank, speciesCell, date, observers, element('td', null, 'detail-link-spacer'), element('td', null, 'detail-link-spacer'));
-      body.append(detail); return detail;
-    });
-    button.setAttribute('aria-controls', detailRows.map(row => row.id).join(' '));
-    const toggle = open => {
-      button.setAttribute('aria-expanded', String(open)); arrow.textContent = open ? '▾' : '▸'; action.textContent = open ? '收合' : '展開';
-      button.setAttribute('aria-label', `${open ? '收合' : '展開'} ${group.name} 的 ${group.count} 筆紀錄`);
-      body.classList.toggle('is-open', open); detailRows.forEach(row => { row.hidden = !open; });
-    };
-    toggle(false);
-    button.addEventListener('click', () => toggle(button.getAttribute('aria-expanded') !== 'true'));
-    toggles.push(toggle); table.append(body);
+    else { map.append(element('span', '地圖', 'unavailable')); map.title = '尚無座標，待重新擷取補齊'; }
+    row.append(name, score, graph, bird, map); body.append(row);
+    const detail = element('tr', null, 'expanded-row'); detail.id = `details-${index}`; detail.hidden = true;
+    const cell = element('td'); cell.colSpan = 5;
+    cell.append(element('p', `所選範圍 ${group.count} 筆紀錄／${group.observers} 位鳥友名稱 · 合併顯示 ${group.displayCount} 列 · 最近 ${shortDate(group.latest)} · 最近一天平均 ${group.average ?? '—'} 種／${group.dayCount} 筆清單`, 'detail-stats'));
+    const daily = element('details', null, 'daily-values'); daily.append(element('summary', '每日熱度數值與資料狀態'));
+    const values = element('ul');
+    for (const point of group.heat.series) values.append(element('li', `${pointLabel(point)}${point.checklists !== undefined ? ` · ${point.people} 人／${point.checklists} 清單` : ''}`));
+    daily.append(values); cell.append(daily);
+    const records = element('table', null, 'records');
+    records.append(element('caption', `${displayLocationName(group.name)} 的紀錄`, 'sr-only'));
+    const recordHead = element('thead'), headings = element('tr');
+    for (const text of ['鳥種', '日期時間', '鳥友']) { const th = element('th', text); th.scope = 'col'; headings.append(th); } recordHead.append(headings); records.append(recordHead);
+    const recordBody = element('tbody');
+    for (const record of group.rows) {
+      const tr = element('tr');
+      const species = element('td', Number.isInteger(record.numSpecies) && record.numSpecies >= 0 ? record.numSpecies : '—', 'species-cell');
+      const date = element('td', null, 'date-cell');
+      const text = record.date ? `${shortDate(record.date)}${record.date.includes('T') ? ' ' + record.date.slice(11,16) : ''}` : '日期不明';
+      date.append(record.subId ? link(text, `https://ebird.org/checklist/${encodeURIComponent(record.subId)}`) : element('span', text));
+      const people = element('td', null, 'observer-cell');
+      record.participants.forEach((p, i) => { if (i) people.append(document.createTextNode('、')); people.append(record.participants.length > 1 && p.subId ? link(p.name, `https://ebird.org/checklist/${encodeURIComponent(p.subId)}`) : element('span', p.name)); });
+      tr.append(species, date, people); recordBody.append(tr);
+    }
+    records.append(recordBody); cell.append(records); detail.append(cell); body.append(detail);
+    button.setAttribute('aria-controls', detail.id);
+    const toggle = open => { detail.hidden = !open; button.setAttribute('aria-expanded', String(open)); arrow.textContent = open ? '▾' : '▸'; button.setAttribute('aria-label', `${open ? '收合' : '展開'} ${group.name} 的 ${group.count} 筆紀錄`); body.classList.toggle('is-open', open); };
+    toggle(false); button.addEventListener('click', () => toggle(detail.hidden)); toggles.push(toggle); table.append(body);
   });
-  const wrap = element('div', null, 'table-wrap'); wrap.tabIndex = 0;
-  wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', '熱門地點比較表');
-  wrap.append(table); $('results').replaceChildren(wrap);
+  $('results').replaceChildren(table);
 }
 async function load() {
-  $('retry').hidden = true; $('coverage').hidden = true; $('status').className = ''; $('status').textContent = '載入中…'; $('results').replaceChildren();
+  $('retry').hidden = true; $('score-info').textContent = ''; $('coverage').hidden = true; $('status').className = ''; $('status').textContent = '載入中…'; $('results').replaceChildren();
   $('summary').textContent = ''; toggles = [];
   try {
     const index = await loadJson(new URL('index.json', root));
     selectDate(index, 'latest'); // Validate index before constructing any snapshot URL.
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    let today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    if (page.searchParams.get('data') === 'examples') today = index.latest;
     const requested = page.searchParams.get('date') || 'today';
     const date = requested === 'today' ? (page.searchParams.get('data') === 'examples' ? index.latest : today) : selectDate(index, requested);
     const days = Number(page.searchParams.get('days') || 4);
@@ -136,7 +135,7 @@ async function load() {
     const available = dates.filter(d => index.dates.includes(d));
     // Legacy snapshots contain several observation days; include the latest one
     // for a useful transition, but never claim it has complete daily coverage.
-    const files = [...new Set([...available, index.latest])];
+    const files = available.length ? available : [index.latest];
     const loaded = await Promise.all(files.map(async d => {
       const snapshot = await loadJson(new URL(`snapshots/${d}.json`, root));
       if (![1, 2].includes(snapshot.schemaVersion) || snapshot.date !== d || !Array.isArray(snapshot.regions) || !snapshot.regions.length) throw new Error('Snapshot 格式錯誤');
@@ -149,7 +148,14 @@ async function load() {
     const region = regions.find(r => r.code === code);
     if (!region) throw new Error('找不到指定地區');
     const catalog = snapshots.some(s => s.schemaVersion === 2) ? await loadJson(new URL('locations.json', root)) : null;
-    const groups = groupChecklists(rangeRows(snapshots, code, catalog, dates)); render(groups);
+    const summaryDates = dateRange(date, 14).filter(d => index.dates.includes(d));
+    const summaries = Object.fromEntries(await Promise.all(summaryDates.map(async d => {
+      const summary = await loadJson(new URL(`summaries/${d}.json`, root));
+      if (summary.schemaVersion !== 1 || summary.algorithm !== 'companions-half-v1' || summary.date !== d || !summary.locations || !summary.quality) throw new Error('每日熱度摘要格式錯誤，請重新建置資料');
+      return [d, summary];
+    })));
+    const groups = groupChecklists(rangeRows(snapshots, code, catalog, dates)).map(group => ({ ...group, heat: heatForLocation(summaries, group.id, date, today) })).sort(compareHeat); render(groups);
+    $('score-info').textContent = `評分截至 ${scoringDates(date, today)[0]} · 三日加權 50%／30%／20%，不含今天；曲線固定 14 天，空心點為今日或不完整資料，缺日斷線。`;
     const warnings = [];
     const missing = dates.filter(d => !snapshots.some(s => s.date === d && s.feedKind === 'daily'));
     if (missing.length) warnings.push(`缺少逐日資料：${missing.join('、')}（不代表當日沒有紀錄）`);
