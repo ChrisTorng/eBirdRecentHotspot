@@ -49,6 +49,19 @@ export async function loadJson(url, fetcher = fetch) {
   if (!response.ok) throw new Error(`資料載入失敗（HTTP ${response.status}）`);
   return response.json();
 }
+export function regionRows(snapshot, code, catalog) {
+  if (snapshot.schemaVersion === 1) {
+    if (!Array.isArray(snapshot.checklists?.[code])) throw new Error('地區清單格式錯誤');
+    return snapshot.checklists[code];
+  }
+  if (snapshot.schemaVersion !== 2 || catalog?.schemaVersion !== 1 || !catalog.locations || !snapshot.checklists || !Array.isArray(snapshot.regionChecklists?.[code])) throw new Error('快照或地點字典格式錯誤');
+  return snapshot.regionChecklists[code].map(subId => {
+    const row = Object.hasOwn(snapshot.checklists, subId) && snapshot.checklists[subId];
+    const loc = row && Object.hasOwn(catalog.locations, row.locId) && catalog.locations[row.locId];
+    if (!row || !loc) throw new Error(`清單或地點資料缺漏：${subId}`);
+    return { ...row, subId, isoObsDate: row.observedAt, loc };
+  });
+}
 export function selectDate(index, requested) {
   if (index.schemaVersion !== 1 || !Array.isArray(index.dates) || !index.dates.includes(index.latest) || index.dates.some(d => !/^\d{4}-\d{2}-\d{2}$/.test(d))) throw new Error('日期索引格式錯誤');
   const date = !requested || requested === 'latest' ? index.latest : requested;

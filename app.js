@@ -1,4 +1,4 @@
-import { dataRoot, loadJson, selectDate, groupChecklists, displayRegions, displayLocationName } from './model.js';
+import { dataRoot, loadJson, selectDate, groupChecklists, displayRegions, displayLocationName, regionRows } from './model.js';
 const $ = id => document.getElementById(id);
 const page = new URL(window.location.href), root = dataRoot(page);
 let toggles = [];
@@ -120,13 +120,14 @@ async function load() {
     options($('date'), [['latest', `最新（${index.latest}）`], ...(Array.isArray(index.dates) ? index.dates : []).map(d => [d, d])], requested);
     const date = selectDate(index, requested);
     const snapshot = await loadJson(new URL(`snapshots/${date}.json`, root));
-    if (snapshot.schemaVersion !== 1 || snapshot.date !== date || !Array.isArray(snapshot.regions) || !snapshot.regions.length) throw new Error('Snapshot 格式錯誤');
+    if (![1, 2].includes(snapshot.schemaVersion) || snapshot.date !== date || !Array.isArray(snapshot.regions) || !snapshot.regions.length) throw new Error('Snapshot 格式錯誤');
     const code = page.searchParams.get('location') || 'TW';
     const regions = displayRegions(snapshot.regions);
     options($('region'), regions.map(r => [r.code, r.name]), code); renderRegions(regions, code);
     const region = regions.find(r => r.code === code);
     if (!region) throw new Error('找不到指定地區');
-    const groups = groupChecklists(snapshot.checklists[code]); render(groups);
+    const catalog = snapshot.schemaVersion === 2 ? await loadJson(new URL('locations.json', root)) : null;
+    const groups = groupChecklists(regionRows(snapshot, code, catalog)); render(groups);
     document.title = `${region.name} · ${date} · eBird 最近熱門地點`;
     $('region-title').textContent = region.name;
     $('summary').textContent = `${groups.length} 個地點 · ${groups.reduce((sum, g) => sum + g.count, 0)} 筆紀錄（${groups.reduce((sum, g) => sum + g.checklistCount, 0)} 份清單）`;

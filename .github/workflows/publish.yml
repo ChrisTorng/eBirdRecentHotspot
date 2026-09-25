@@ -45,7 +45,11 @@ jobs:
           EBIRD_API_KEY: ${{ secrets.EBIRD_API_KEY }}
         run: node scripts/collect.mjs .data-worktree/data
       - name: Build static site
-        run: node scripts/build.mjs .data-worktree/data
+        # Migrate existing history in the data worktree before publishing.
+        # It is committed with the new snapshot only after successful build.
+        run: |
+          node scripts/migrate.mjs .data-worktree/data
+          node scripts/build.mjs .data-worktree/data
       - name: Save complete snapshot
         shell: bash
         run: |

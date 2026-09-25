@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { compactSnapshot } from './compact.mjs';
 
 export function taiwanDate(now = new Date()) {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
@@ -39,7 +40,7 @@ export async function collect({ key, request = path => api(path, key), now = new
 }
 async function writeJson(path, value) {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(`${path}.tmp`, JSON.stringify(value, null, 2) + '\n');
+  await writeFile(`${path}.tmp`, JSON.stringify(value) + '\n');
   await rename(`${path}.tmp`, path);
 }
 export async function saveSnapshot(root, snapshot) {
@@ -48,6 +49,25 @@ export async function saveSnapshot(root, snapshot) {
   try { dates = JSON.parse(await readFile(resolve(root, 'index.json'), 'utf8')).dates; }
   catch (error) { if (error.code !== 'ENOENT') throw error; }
   dates = [...new Set([...dates, snapshot.date])].sort().reverse();
+  if (snapshot.schemaVersion === 1) {
+    const compact = compactSnapshot(snapshot);
+    const path = resolve(root, 'locations.json');
+    let catalog = { schemaVersion: 1, updatedAt: '', locations: {} };
+    try { catalog = JSON.parse(await readFile(path, 'utf8')); }
+    catch (error) { if (error.code !== 'ENOENT') throw error; }
+    if (catalog.schemaVersion !== 1 || !catalog.locations || typeof catalog.locations !== 'object' || Array.isArray(catalog.locations)) throw new Error('Invalid location catalog');
+    catalog.locations = Object.assign(Object.create(null), catalog.locations);
+    const current = snapshot.fetchedAt >= catalog.updatedAt;
+    for (const [id, location] of Object.entries(compact.locations)) {
+      // Migration/backfill can add missing IDs but must not undo newer names.
+      if (current || !Object.hasOwn(catalog.locations, id)) catalog.locations[id] = location;
+    }
+    if (current) catalog.updatedAt = snapshot.fetchedAt;
+    // Locations precede any snapshot referring to them. Actions publishes only
+    // after all writes/build succeed, so users never see a partial deployment.
+    await writeJson(path, catalog);
+    snapshot = compact.snapshot;
+  }
   await writeJson(resolve(root, 'snapshots', `${snapshot.date}.json`), snapshot);
   await writeJson(resolve(root, 'index.json'), { schemaVersion: 1, latest: dates[0], dates });
 }

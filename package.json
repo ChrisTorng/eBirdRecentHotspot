@@ -6,6 +6,7 @@
   "scripts": {
     "test": "node --test",
     "collect": "node scripts/collect.mjs",
+    "migrate": "node scripts/migrate.mjs",
     "examples": "node scripts/examples.mjs",
     "build": "node scripts/build.mjs"
   }
