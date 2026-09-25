@@ -93,12 +93,15 @@ h1 { font-size: clamp(1.5rem, 4vw, 2rem); }
 .results-heading { padding: 12px 14px; flex-wrap: wrap; gap: 8px; }
 .table-actions { flex-shrink: 0; }
 .table-actions button { white-space: nowrap; }
-.hotspot-table { min-width: 0; font-size: 13px; }
-.count-col { width: 90px; }.latest-col { width: 76px; }.average-col { width: 112px; }
-.species-col { width: 46px; }.date-col { width: 112px; }.ebird-col { width: 66px; }
+.hotspot-table { min-width: 0; font-size: 13px; table-layout: auto; }
+.hotspot-table col { width: auto; }
+.hotspot-table .observer-col { width: 100%; }
 th, td { padding: 7px 8px; }
 thead th { padding: 9px 8px; font-size: 12px; }
-thead small { white-space: normal; line-height: 1.4; }
+thead small { white-space: nowrap; line-height: 1.4; }
+thead th { white-space: nowrap; }
+.map-cell { text-align: center; white-space: nowrap; font-size: 12px; }
+.unavailable { color: #8b958e; cursor: help; }
 .metric-pair { grid-template-columns: minmax(3ch, auto) 1ch minmax(2ch, auto); gap: 3px; }
 .metric-pair strong { font-size: 15px; }
 .count-cell { padding-left: 8px; }
@@ -124,11 +127,12 @@ thead small { white-space: normal; line-height: 1.4; }
   .location-group { border-top: 1px solid var(--line); }
   .group-row { display: grid; grid-template-columns: 1fr 1fr 1.3fr; padding: 6px 8px; gap: 0 6px; }
   .group-row > * { border: 0; padding: 3px 0; min-width: 0; }
-  .group-row .location-cell { grid-column: 1 / 4; grid-row: 1; padding-right: 65px; }
-  .group-row .ebird-cell { grid-column: 3; grid-row: 1; justify-self: end; align-self: start; padding-top: 10px; }
-  .group-row .count-cell { grid-column: 1; grid-row: 2; }
-  .group-row .latest-cell { grid-column: 2; grid-row: 2; }
-  .group-row .average-cell { grid-column: 3; grid-row: 2; }
+  .group-row .location-cell { grid-column: 1 / 4; grid-row: 1 / 3; padding-right: 78px; align-self: center; }
+  .group-row .ebird-cell { grid-column: 3; grid-row: 1; justify-self: end; align-self: center; padding: 4px 0; }
+  .group-row .map-cell { grid-column: 3; grid-row: 2; justify-self: end; padding: 4px 0; }
+  .group-row .count-cell { grid-column: 1; grid-row: 3; }
+  .group-row .latest-cell { grid-column: 2; grid-row: 3; }
+  .group-row .average-cell { grid-column: 3; grid-row: 3; }
   .group-row .numeric, .group-row .date-cell { text-align: center; }
   .group-row .count-cell::before { content: '紀錄 / 人'; }
   .group-row .latest-cell::before { content: '最近日期'; }
@@ -138,7 +142,7 @@ thead small { white-space: normal; line-height: 1.4; }
   .toggle-label { display: none; }
   .detail-row { display: grid; grid-template-columns: 48px 110px minmax(0, 1fr); padding: 0 8px; }
   .detail-row > td { min-width: 0; padding: 7px 4px; }
-  .detail-indent, .detail-row > td:last-child { display: none; }
+  .detail-indent, .detail-link-spacer { display: none; }
   .detail-row .numeric::after { content: ' 種'; font-size: 10px; }
   .detail-row .numeric { text-align: center; }
   .detail-row .date-cell { font-size: 12px; }

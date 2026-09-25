@@ -84,7 +84,7 @@ export function groupChecklists(rows) {
     if (row.subId && seen.has(row.subId)) continue;
     if (row.subId) seen.add(row.subId);
     const record = { ...row, date: observationDate(row) };
-    if (!groups.has(row.locId)) groups.set(row.locId, { id: row.locId, name: String(row.loc?.name || '未命名地點'), hotspot: row.loc?.isHotspot === true, rows: [] });
+    if (!groups.has(row.locId)) groups.set(row.locId, { id: row.locId, name: String(row.loc?.name || '未命名地點'), hotspot: row.loc?.isHotspot === true, coordinates: locationCoordinates(row.loc), rows: [] });
     groups.get(row.locId).rows.push(record);
   }
   return [...groups.values()].map(group => {
@@ -104,7 +104,7 @@ export function groupChecklists(rows) {
     const latest = group.rows[0].date.slice(0, 10);
     const day = latest ? group.rows.filter(r => r.date.slice(0, 10) === latest) : [];
     const species = day.map(r => r.numSpecies).filter(n => Number.isInteger(n) && n >= 0);
-    return { ...group, count: group.rows.length, checklistCount: originalRows.length, observers: new Set(originalRows.map(r => r.userDisplayName).filter(Boolean)).size, latest, dayCount: day.length, average: species.length ? Math.round(species.reduce((a, b) => a + b, 0) / species.length) : null };
+    return { ...group, count: originalRows.length, displayCount: group.rows.length, checklistCount: originalRows.length, observers: new Set(originalRows.map(r => r.userDisplayName).filter(Boolean)).size, latest, dayCount: day.reduce((sum, row) => sum + row.participants.length, 0), average: species.length ? Math.round(species.reduce((a, b) => a + b, 0) / species.length) : null };
   }).sort((a, b) => b.count - a.count || b.rows[0].date.localeCompare(a.rows[0].date) || a.id.localeCompare(b.id));
 }
 
@@ -128,4 +128,13 @@ export function rangeRows(snapshots, code, catalog, dates) {
     }
   }
   return [...rows.values()].filter(row => dates.includes(observationDate(row).slice(0, 10)));
+}
+
+export function locationCoordinates(loc) {
+  const lat = loc?.lat ?? loc?.latitude, lng = loc?.lng ?? loc?.longitude;
+  return Number.isFinite(lat) && Number.isFinite(lng) && Math.abs(lat) <= 90 && Math.abs(lng) <= 180 ? { lat, lng } : null;
+}
+export function googleMapsUrl(coordinates) {
+  const valid = locationCoordinates(coordinates);
+  return valid ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${valid.lat},${valid.lng}`)}` : null;
 }

@@ -1,5 +1,5 @@
 [
- {"subId":"S1","locId":"L1","loc":{"name":"示範濕地","isHotspot":true},"obsDt":"2026-09-24","obsTime":"07:00","userDisplayName":"示範甲","numSpecies":20},
- {"subId":"S2","locId":"L1","loc":{"name":"示範濕地","isHotspot":true},"isoObsDate":"2026-09-24T08:00","userDisplayName":"示範乙","numSpecies":30},
- {"subId":"S3","locId":"L2","loc":{"name":"示範公園","isHotspot":false},"obsDt":"2026-09-23","userDisplayName":"示範甲","numSpecies":5}
+ {"subId":"S1","locId":"L1","loc":{"name":"示範濕地","isHotspot":true,"lat":25.03,"lng":121.5},"obsDt":"2026-09-24","obsTime":"07:00","userDisplayName":"示範甲","numSpecies":20},
+ {"subId":"S2","locId":"L1","loc":{"name":"示範濕地","isHotspot":true,"lat":25.03,"lng":121.5},"isoObsDate":"2026-09-24T08:00","userDisplayName":"示範乙","numSpecies":30},
+ {"subId":"S3","locId":"L2","loc":{"name":"示範公園","isHotspot":false,"latitude":24.15,"longitude":120.67},"obsDt":"2026-09-23","userDisplayName":"示範甲","numSpecies":5}
 ]

@@ -71,7 +71,7 @@ export async function saveSnapshot(root, snapshot) {
     const current = snapshot.fetchedAt >= catalog.updatedAt;
     for (const [id, location] of Object.entries(compact.locations)) {
       // Migration/backfill can add missing IDs but must not undo newer names.
-      if (current || !Object.hasOwn(catalog.locations, id)) catalog.locations[id] = location;
+      if (current || !Object.hasOwn(catalog.locations, id)) catalog.locations[id] = { ...catalog.locations[id], ...location };
     }
     if (current) catalog.updatedAt = snapshot.fetchedAt;
     // Locations precede any snapshot referring to them. Actions publishes only

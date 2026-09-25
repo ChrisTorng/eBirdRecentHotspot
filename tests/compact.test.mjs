@@ -18,7 +18,7 @@ test('one checklist and one location across region memberships; only needed fiel
   assert.equal(snapshot.schemaVersion,2);
   assert.deepEqual(Object.keys(snapshot.checklists),['S1','S2']);
   assert.deepEqual({...snapshot.regionChecklists}, {TW:['S1','S2'],'TW-TPE':['S1']});
-  assert.deepEqual({...locations},{L1:{name:'公園',isHotspot:true}});
+  assert.deepEqual({...locations},{L1:{name:'公園',isHotspot:true,lat:24,lng:120}});
   assert.deepEqual(snapshot.checklists.S1, {locId:'L1',userDisplayName:'鳥友甲',numSpecies:12,observedAt:'2026-09-25T06:58'});
   const catalog={schemaVersion:1,locations};
   for (const region of input.regions) {

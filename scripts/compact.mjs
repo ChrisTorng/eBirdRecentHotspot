@@ -1,4 +1,4 @@
-import { observationDate } from '../model.js';
+import { observationDate, locationCoordinates } from '../model.js';
 
 // Raw API responses live only in memory; production persists this projection.
 export function compactSnapshot(raw) {
@@ -22,7 +22,7 @@ export function compactSnapshot(raw) {
         numSpecies: Number.isInteger(row.numSpecies) && row.numSpecies >= 0 ? row.numSpecies : null,
         observedAt: observationDate(row)
       };
-      if (!Object.hasOwn(locations, row.locId)) locations[row.locId] = { name: String(row.loc?.name || '未命名地點'), isHotspot: row.loc?.isHotspot === true };
+      if (!Object.hasOwn(locations, row.locId)) locations[row.locId] = { name: String(row.loc?.name || '未命名地點'), isHotspot: row.loc?.isHotspot === true, ...locationCoordinates(row.loc) };
     }
     regionChecklists[region.code] = [...ids];
   }

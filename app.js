@@ -1,4 +1,4 @@
-import { dataRoot, loadJson, selectDate, groupChecklists, displayRegions, displayLocationName, dateRange, rangeRows } from './model.js';
+import { dataRoot, loadJson, selectDate, groupChecklists, displayRegions, displayLocationName, dateRange, rangeRows, googleMapsUrl } from './model.js';
 const $ = id => document.getElementById(id);
 const page = new URL(window.location.href), root = dataRoot(page);
 let toggles = [];
@@ -48,14 +48,14 @@ function render(groups) {
   const table = element('table', null, 'hotspot-table');
   table.append(element('caption', '依紀錄數排序的最近熱門地點；展開地點可查看各筆清單。', 'sr-only'));
   const columns = element('colgroup');
-  for (const name of ['count-col', 'latest-col', 'average-col', 'species-col', 'date-col', 'observer-col', 'ebird-col']) columns.append(element('col', null, name));
+  for (const name of ['count-col', 'latest-col', 'average-col', 'species-col', 'date-col', 'observer-col', 'ebird-col', 'map-col']) columns.append(element('col', null, name));
   table.append(columns);
   const head = element('thead'), header = element('tr');
   for (const [title, hint, className] of [
-    ['紀錄 / 人', '合併紀錄 / 不同鳥友名稱', 'numeric'],
+    ['紀錄 / 人', '清單數 / 不同鳥友名稱', 'numeric'],
     ['最近日期', '此地點最新觀察日', 'date-cell'],
-    ['平均鳥種 / 紀錄', '最近一天的平均 / 筆數', 'numeric'],
-    ['鳥種', '單筆', 'numeric'], ['日期', '觀察時間', 'date-cell'], ['鳥友名', '各人清單', ''], ['eBird 地點', '另開新視窗', 'ebird-cell']
+    ['平均鳥種 / 紀錄', '最近日平均 / 清單數', 'numeric'],
+    ['鳥種', '單筆', 'numeric'], ['日期', '觀察時間', 'date-cell'], ['鳥友名', '各人清單', ''], ['鳥點', '另開新視窗', 'ebird-cell'], ['地圖', 'Google Maps', 'map-cell']
   ]) {
     const th = element('th', null, className); th.scope = 'col';
     th.append(element('span', title), element('small', hint)); header.append(th);
@@ -77,9 +77,18 @@ function render(groups) {
     button.append(arrow, element('span', displayName, 'location-name'), action);
     location.append(button);
     const ebird = element('td', null, 'ebird-cell');
-    if (group.hotspot) ebird.append(link('eBird', `https://ebird.org/hotspot/${encodeURIComponent(group.id)}/bird-list?yr=curM`));
-    else { ebird.textContent = '個人地點'; ebird.title = '此地點非公開熱點，可由紀錄日期或鳥友連結查看清單。'; }
-    tr.append(count, latest, average, location, ebird); body.append(tr);
+    if (group.hotspot) ebird.append(link('鳥點', `https://ebird.org/hotspot/${encodeURIComponent(group.id)}/bird-list?yr=curM`));
+    else {
+      const representative = group.rows.find(row => row.subId);
+      if (representative) ebird.append(link('個人鳥點', `https://ebird.org/checklist/${encodeURIComponent(representative.subId)}`));
+      else ebird.textContent = '個人鳥點';
+      ebird.title = '個人鳥點：透過最新清單查看地點資訊';
+    }
+    const map = element('td', null, 'map-cell');
+    const mapUrl = googleMapsUrl(group.coordinates);
+    if (mapUrl) map.append(link('地圖', mapUrl));
+    else { map.append(element('span', '地圖', 'unavailable')); map.title = '尚無座標，待此地點重新擷取後提供地圖'; }
+    tr.append(count, latest, average, location, ebird, map); body.append(tr);
     const detailRows = group.rows.map((row, rowIndex) => {
       const detail = element('tr', null, 'detail-row'); detail.id = `detail-${index}-${rowIndex}`; detail.hidden = true;
       const blank = element('td', null, 'detail-indent'); blank.colSpan = 3;
@@ -92,9 +101,9 @@ function render(groups) {
       const observers = element('td', null, 'observer-cell');
       row.participants.forEach((person, personIndex) => {
         if (personIndex) observers.append(document.createTextNode('、'));
-        observers.append(person.subId ? link(person.name, `https://ebird.org/checklist/${encodeURIComponent(person.subId)}`) : element('span', person.name));
+        observers.append(row.participants.length > 1 && person.subId ? link(person.name, `https://ebird.org/checklist/${encodeURIComponent(person.subId)}`) : element('span', person.name));
       });
-      detail.append(blank, speciesCell, date, observers, element('td'));
+      detail.append(blank, speciesCell, date, observers, element('td', null, 'detail-link-spacer'), element('td', null, 'detail-link-spacer'));
       body.append(detail); return detail;
     });
     button.setAttribute('aria-controls', detailRows.map(row => row.id).join(' '));
@@ -150,7 +159,7 @@ async function load() {
     $('coverage').textContent = warnings.join('。'); $('coverage').hidden = !warnings.length;
     document.title = `${region.name} · ${date} · eBird 最近熱門地點`;
     $('region-title').textContent = region.name;
-    $('summary').textContent = `${groups.length} 個地點 · ${groups.reduce((sum, g) => sum + g.count, 0)} 筆紀錄（${groups.reduce((sum, g) => sum + g.checklistCount, 0)} 份清單）`;
+    $('summary').textContent = `${groups.length} 個地點 · ${groups.reduce((sum, g) => sum + g.count, 0)} 筆紀錄（合併顯示 ${groups.reduce((sum, g) => sum + g.displayCount, 0)} 列）`;
     $('source').href = `https://ebird.org/region/${encodeURIComponent(code)}/recent-checklists`;
     const fetched = new Date(snapshots.map(s => s.fetchedAt).sort().at(-1) || '');
     const time = Number.isNaN(fetched.getTime()) ? '未知' : new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(fetched);

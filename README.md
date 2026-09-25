@@ -38,7 +38,7 @@ Snapshot schema v2 以清單 ID 為 key：
 
 `TW` 不另存 ID 陣列，由縣市聯集產生。共用 `locations.json` 為 `{"schemaVersion":1,"updatedAt":"...","locations":{"L7983126":{"name":"台中--台中都會公園北側停車場","isHotspot":true}}}`。
 
-- 不保存 subID、locID、多份日期表示、重複地點名稱、未使用座標及階層名稱。production JSON 不縮排。
+- 不保存 subID、locID、多份日期表示、重複地點名稱、重複座標欄位及階層名稱；地點字典保留一組有效 lat／lng 供地圖連結。production JSON 不縮排。
 - 地點字典持續新增／更新並保留歷史用到的地點。較舊快照不覆蓋較新名稱；歷史畫面使用目前字典名稱與熱點狀態。
 - 不同鳥友的清單 ID 皆保留，同行合併僅在顯示層。
 - 舊 v1／v2 最近清單快照仍可讀，但不視為逐日完整資料。畫面依觀察日期篩選、同 ID 取最新擷取版本，並提示舊資料限制。
@@ -50,9 +50,9 @@ Snapshot schema v2 以清單 ID 為 key：
 
 桌面使用緊湊比較表；760px 以下改為地點分組，數字仍對齊，地區改下拉選單，無須水平捲動。附 manifest 與 192／512 圖示，供瀏覽器加入主畫面／獨立視窗；未提供離線資料快取，查詢需網路。
 
-同地點、完整時間、鳥種數相同的清單合併；缺時間或鳥種數不合併。依合併紀錄數及最新日期排序；鳥友數按不同顯示名稱，平均鳥種為最近一天合併紀錄的平均，不是鳥種聯集。
+同地點、完整時間、鳥種數相同的清單合併；缺時間或鳥種數不合併。依原始清單數及最新日期排序（去除重複 ID，每個人的清單仍各算一筆）；鳥友數按不同顯示名稱，平均鳥種為最近一天合併紀錄的平均，不是鳥種聯集。
 
-地點名稱與箭頭共同展開，eBird 地點連結在右側。日期連至第一人清單，各鳥友各自連結。外部連結另開並有 ↗；個人地點不產生公開 hotspot 連結。
+地點名稱與箭頭共同展開，鳥點及 Google Maps 座標連結在右側，手機上下排列。個人鳥點連至最新清單以查看地點資訊。日期連至第一人清單；多人合併列各鳥友各自連結，單人列鳥友名純文字。外部連結另開並有 ↗；個人地點不產生公開 hotspot 連結。
 
 ## 無金鑰開發
 
@@ -98,3 +98,7 @@ npm run build
 secret 讀不到時確認 environment 名稱為 **Env**。重跑舊 run 仍使用舊 workflow，修改後應啟動新 run。
 
 參考：[GitHub Pages 發布來源設定](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。舊 [eBird repo](https://github.com/ChrisTorng/eBird) 保留 alerts 與搬遷入口。
+
+地圖使用 [Google Maps 座標搜尋 URL](https://developers.google.com/maps/documentation/urls/get-started)。舊精簡資料沒有座標時顯示灰色「地圖」，待該地點重新擷取補齊；不猜測位置。
+
+熱門指標與曲線尚在討論，詳見 [熱門排序提案](docs/hotness-proposal.md)，目前尚未套用新評分。
