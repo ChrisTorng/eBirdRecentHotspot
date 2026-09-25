@@ -36,7 +36,7 @@ test('all discovered regions, API authentication, malformed data', async () => {
  const paths=[],rows=await fixture('normal');
  const request=async path=>{paths.push(path);return path.startsWith('ref/')?[{code:'TW-TPE',name:'臺北市'},{code:'TW-LIE',name:'連江縣'}]:rows;};
  const snapshot=await collect({key:'test',request});
- assert.deepEqual(Object.keys(snapshot.checklists),['TW','TW-TPE','TW-LIE']); assert.equal(paths.length,4); assert.ok(paths.slice(1).every(p=>p.endsWith('?maxResults=200')));
+ assert.deepEqual(Object.keys(snapshot.checklists),['TW-TPE','TW-LIE']); assert.equal(paths.length,3); assert.ok(paths.slice(1).every(p=>p.endsWith('?maxResults=200&sortKey=obs_dt')));
  await assert.rejects(collect({key:''}),/EBIRD_API_KEY/);
  await assert.rejects(collect({key:'test',request:async p=>p.startsWith('ref/')?[{code:'TW-TPE',name:'臺北市'}]:{}}),/Invalid checklist/);
  await api('test','secret',{fetcher:async(url,options)=>{assert.equal(options.headers['X-eBirdApiToken'],'secret');assert.ok(!url.includes('secret'));return {ok:true,json:async()=>[]};}});

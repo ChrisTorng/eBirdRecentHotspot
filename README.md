@@ -2,64 +2,61 @@
 
 [網站](https://christorng.idv.tw/eBirdRecentHotspot/) · [原始碼](https://github.com/ChrisTorng/eBirdRecentHotspot)
 
-eBird 最近熱門地點網站。production 使用官方 API，前端不接觸 API key。
+固定 HTML/CSS/JS，production 只使用官方 eBird API；前端不接觸金鑰。
 
-## 架構
+## 逐日資料
 
-- `main`：固定 HTML/CSS/JS、scripts、tests、可提交的 examples。
-- `data` branch：`data/index.json`、共用 `data/locations.json` 與 `data/snapshots/YYYY-MM-DD.json`，由 Actions 首次執行時建立。
-- Snapshot v2 含 `schemaVersion`、台灣日期 `date`、UTC 擷取時間 `fetchedAt`、`regions`、每區清單 ID 陣列 `regionChecklists`，以及以 `subId` 為 key 的 `checklists`。API 原始回應僅於擷取時暫存在記憶體，不再直接存檔。
-- 先用 `/v2/ref/region/list/subnational1/TW?fmt=json` 取得所有縣市，再抓 `TW` 及每個回傳地區的 `/v2/product/lists/{regionCode}?maxResults=200`。快照保留 API 原始名稱；前端使用原版的繁體中文縣市名稱與順序（台灣、六都、其餘縣市、離島），只列出該快照提供的地區。
-- 每個地區最多最近 200 筆，不是該日完整調查。全台獨立擷取，並非縣市清單聯集。快照日期與觀察日期不同。
-- 台灣時間一日一檔，同日重跑覆寫、保留歷史。全部請求成功才寫檔及發布；失敗保留既有網站。網路、429、5xx 最多嘗試三次，其他 HTTP 錯誤立即失敗。
-- 日期索引的 `latest` 指向最新日期；未指定 date 或 `date=latest` 都使用 latest。未知日期／地區顯示錯誤。
-- 依地點 ID 分組、清單 ID 去重，同地點、完整觀察時間、鳥種數相同的清單合併為一筆紀錄（缺時間或鳥種數不合併），以合併後紀錄數及最近日期排序。鳥友數為不同顯示名稱數；平均鳥種不是鳥種聯集。個人地點不產生 hotspot 連結。
-- 畫面沿用原版比較表，新增最右側 eBird 地點欄，左側固定對齊紀錄／人、最近日期、平均鳥種／紀錄，右側地點名稱和箭頭共同作為展開按鈕。日期連至合併組第一人的清單，各鳥友連至自己的清單；鳥種數只顯示數字。紀錄數、當日筆數和平均皆以合併後計算，人數保留所有不同鳥友名稱。所有外部連結另開分頁／視窗並顯示 ↗；個人地點無公開 hotspot 頁，請由清單查看。中英並列地點隱藏括號內的英文翻譯，滑鼠提示保留完整 API 名稱；只有英文的名稱照原文顯示，不猜譯。
+- `main` 放前端、scripts、tests、examples；`data` branch 放 `data/index.json`、`locations.json` 與 `snapshots/YYYY-MM-DD.json`。
+- 先讀 `/v2/ref/region/list/subnational1/TW?fmt=json`，再對所有縣市逐日讀 `/v2/product/lists/{regionCode}/{year}/{month}/{day}?maxResults=200&sortKey=obs_dt`。不再抓 TW，全台由縣市合併。
+- 每次重抓台灣時間今天、昨天、前天、大前天，覆寫日期檔案，以更新補登／修改。超過四天的修改不會自動追溯，可手動指定日期補抓。
+- **日期端點仍最多 200 份，官方未提供分頁，無法保證完整單日。** 達 200 筆就記錄 `possiblyTruncated: true`，畫面列出縣市及日期；恰好 200 也提示。今天尚未結束，少於上限也不代表日後不會新增。
+- 官方文件的日期 feed 描述使用 submitted，並提供 obs_dt／creation_dt 排序。程式保存指定日期的 API feed，畫面依實際 `observedAt` 過濾，不將擷取時間冒充觀察時間。
+- 全部四日請求成功才開始寫入，build 成功才提交 data branch／發布。網路、429、5xx 最多試三次；其他 HTTP 錯誤停止。不以範例替代 production。
+- 前端最後日期／天數預設今天／四天，可選 1–31 天。`date=latest` 使用索引最新日期；例如 `?date=2026-09-24&days=4&location=TW-TPE`。缺日會提示，不冒充零筆。
+- `?data=examples` 的今天固定指示範最新日期，避免離線範例隨日曆失效；production 使用台灣今天。
 
-參考：[官方 eBird API 文件](https://documenter.getpostman.com/view/664302/S1ENwy59)。
+參考：[eBird 官方 API 文件](https://documenter.getpostman.com/view/664302/S1ENwy59)。
 
-## 精簡資料格式與舊資料轉換
+## 精簡 JSON 與歷史相容
 
-每日快照只保存每份清單一次；TW 與縣市可以參照同一 ID，各地區仍保留 API 原本的成員和順序，不將 TW 換成縣市聯集。例如：
+Snapshot schema v2 以清單 ID 為 key：
 
 ```json
 {
   "schemaVersion": 2,
+  "feedKind": "daily",
   "date": "2026-09-25",
   "fetchedAt": "2026-09-25T00:00:00.000Z",
   "regions": [{"code":"TW","name":"台灣"},{"code":"TW-TXG","name":"Taichung City"}],
-  "regionChecklists": {"TW":["S395919213"],"TW-TXG":["S395919213"]},
+  "coverage": {"TW-TXG":{"count":1,"possiblyTruncated":false}},
+  "regionChecklists": {"TW-TXG":["S395919213"]},
   "checklists": {
     "S395919213": {"locId":"L7983126","userDisplayName":"Shih-Chun Huang","numSpecies":12,"observedAt":"2026-09-25T06:58"}
   }
 }
 ```
 
-共用 `locations.json` 的格式為 `{"schemaVersion":1,"updatedAt":"...","locations":{"L7983126":{"name":"台中--台中都會公園北側停車場(Taichung--Taichung Metropolitan Park Northern Parking Lot)","isHotspot":true}}}`。
+`TW` 不另存 ID 陣列，由縣市聯集產生。共用 `locations.json` 為 `{"schemaVersion":1,"updatedAt":"...","locations":{"L7983126":{"name":"台中--台中都會公園北側停車場","isHotspot":true}}}`。
 
-- `subId` 作為 key，不再重複 `subID`。`locId` 只留作地點參照，不再存 `locID`。
-- `obsDt`／`obsTime`／`isoObsDate` 統一為 `observedAt`；無時間的觀察保留日期，無效日期為空字串，不虛構時間。
-- 地點只留 `name` 和 `isHotspot`。移除重複名稱、未使用的座標、國家／行政區名稱和 `hierarchicalName`，目前畫面不需要重建階層名稱。
-- 同次擷取若不同地區回傳同一 subId 的不同內容，以第一次出現為準。不同鳥友的 subId 仍全部保留；畫面中的同行合併是另外一層。
-- 地點字典每天新增／更新，保留歷史用到的地點；補較舊快照不覆蓋新名稱。歷史頁面會使用**目前字典中的地點名稱與熱點狀態**，並非當時的名稱；每日清單內容仍獨立保存。
-- 所有 production JSON 採無縮排格式，降低傳輸量。字典隨歷史地點累積；瀏覽器可使用 HTTP 快取重新驗證共用檔案。
-- 前端同時支援 v1 與 v2，v1 不需要字典。Actions 在 build 前自動轉換 data branch 現存 v1 快照，並驗證所有參照，成功後才一起 commit／部署。Git 過往 commit 中的原始資料仍在，這次不重寫 Git history。
+- 不保存 subID、locID、多份日期表示、重複地點名稱、未使用座標及階層名稱。production JSON 不縮排。
+- 地點字典持續新增／更新並保留歷史用到的地點。較舊快照不覆蓋較新名稱；歷史畫面使用目前字典名稱與熱點狀態。
+- 不同鳥友的清單 ID 皆保留，同行合併僅在顯示層。
+- 舊 v1／v2 最近清單快照仍可讀，但不視為逐日完整資料。畫面依觀察日期篩選、同 ID 取最新擷取版本，並提示舊資料限制。
+- 新一輪抓取覆寫最近四日舊快照，其他舊歷史保留。Actions 的 migrate 將 v1 壓縮成 v2，驗證參照，不偽裝成 daily feed，不改寫 Git history。
 
-本機轉換舊資料（不需要 API key）：
+## 畫面
 
-```sh
-npm run migrate
-# 指定其他資料根目錄：
-node scripts/migrate.mjs .data-worktree/data
-```
+保留原繁體中文縣市名稱與順序。中英地點去除括號英文翻譯，提示保留原名；僅英文名稱不猜譯。
 
-轉換可重跑；已有 v2 檔不重複處理。`npm run examples` 會產生 v2 範例，`examples/fixtures/` 保留可閱讀的原始格式測試資料。
+桌面使用緊湊比較表；760px 以下改為地點分組，數字仍對齊，地區改下拉選單，無須水平捲動。附 manifest 與 192／512 圖示，供瀏覽器加入主畫面／獨立視窗；未提供離線資料快取，查詢需網路。
 
-以 2026-09-25 的完整資料實測：原檔 4,333,056 bytes；v2 快照 574,669 bytes，加地點字典 190,657 bytes，首次合計 765,326 bytes（減少 82.3%，未計 HTTP 壓縮）。23 個地區轉換前後的地點、排序、統計及清單連結均比對一致。
+同地點、完整時間、鳥種數相同的清單合併；缺時間或鳥種數不合併。依合併紀錄數及最新日期排序；鳥友數按不同顯示名稱，平均鳥種為最近一天合併紀錄的平均，不是鳥種聯集。
+
+地點名稱與箭頭共同展開，eBird 地點連結在右側。日期連至第一人清單，各鳥友各自連結。外部連結另開並有 ↗；個人地點不產生公開 hotspot 連結。
 
 ## 無金鑰開發
 
-需要 Node.js 22+，無 npm 依賴。啟動靜態 server 可使用 Python：
+Node.js 22+，無 npm 依賴：
 
 ```sh
 npm test
@@ -67,31 +64,37 @@ npm run examples
 python -m http.server 8000 --bind 127.0.0.1
 ```
 
-開啟 `http://localhost:8000/?data=examples`。`examples/data/` 已提交，可直接使用。fixtures 全為合成資料：正常、空清單、重複 ID、同名不同地點、缺欄位、跨年、無效日期、0/大數字、HTML 注入字串。臺北市是極端案例、連江縣是空清單；可切換兩個快照日期。
+開啟 `http://localhost:8000/?data=examples`。合成 fixtures 包含同行、重複 ID、同名不同地點、缺欄位、跨年、極端數字、HTML 注入字串；範例含空縣市、200 筆上限及缺日。跨年範例選 2026-01-01、臺北市。
+
+```sh
+node scripts/build.mjs examples/data
+```
+
+開啟 `http://localhost:8000/_site/?date=latest` 測試 project path。所有資源與 JSON 路徑相對專案，不使用 `/data/...`。
 
 ## 本機 API 資料
 
-至 [eBird API keygen](https://ebird.org/api/keygen) 取得金鑰。PowerShell：
+至 [eBird API keygen](https://ebird.org/api/keygen) 取得金鑰；PowerShell：
 
 ```powershell
 $env:EBIRD_API_KEY = '你的金鑰'
 npm run collect
-python -m http.server 8000 --bind 127.0.0.1
+# 指定最後日期及回抓天數：
+node scripts/collect.mjs .local-data 2026-09-25 4
+npm run build
 ```
 
-開啟 `http://localhost:8000/?data=local`。資料預設寫入 `.local-data/`，已 gitignore，勿提交金鑰與本機資料。
-
-`npm run build` 組合前端和 `.local-data` 成 `_site/`。離線可用 `node scripts/build.mjs examples/data`，再開啟 `http://localhost:8000/_site/` 驗證 project path。所有 fetch 相對頁面 URL，不使用 `/data/...`。`data` query 僅接受 `examples` 或 `local`，其他值使用 production。
+`?data=local` 使用 `.local-data/`；`_site/` 則使用 `data/`。兩個本機目錄已忽略，勿提交。舊資料可用 `npm run migrate` 轉換。
 
 ## GitHub Actions / Pages
 
-1. 新 repo Settings → Secrets and variables → Actions 在 **Env** environment 新增 `EBIRD_API_KEY` secret（也支援 repository secret）。
-2. Settings → Pages → Source 選 **GitHub Actions**。`christorng.idv.tw` 使用者 Pages 網域與 DNS 須已設定；本專案不放 CNAME。
-3. Workflow 需 contents write、pages write、id-token write；若保護 data branch，需允許 Actions 更新。
-4. Push main、手動 workflow_dispatch，或台灣每日 06:00（UTC `0 22 * * *`）執行。GitHub 定時排程可能延遲。
+1. Settings → Secrets and variables → Actions：在 **Env** environment 設定 `EBIRD_API_KEY`（也支援 repository secret）。
+2. **Settings → Pages → Source 必須選 GitHub Actions。** 直接發布 main 沒有 production JSON，預設 `pages build and deployment` 又會與自訂 workflow 互相覆蓋，導致 `data/index.json` 404。
+3. 自訂 `Collect and publish` 應是唯一部署流程。workflow 現在檢查 Pages source，不符明確失敗；修正設定後執行新 workflow。
+4. collect job 使用 **Env**：測試、準備 data branch、回抓四天、migrate、build、提交 data 並上傳 `_site` artifact。
+5. deploy job 使用 **github-pages**，部署同一 artifact。需要 contents write、pages write、id-token write；data branch 保護須容許 Actions 更新。
+6. Push main、workflow_dispatch、台灣每日 06:00（UTC `0 22 * * *`）執行，排程可能延遲。data push 不觸發。本專案不放 CNAME，沿用使用者 Pages 自訂網域。
 
-Workflow 的 `collect` job 使用 **Env** environment 讀取金鑰、測試、準備 data branch、擷取、build、提交 data 並上傳 Pages artifact；`deploy` job 等待成功後，使用 **github-pages** environment 將同一 artifact 部署至 `/eBirdRecentHotspot/`。流程序列化避免同時覆寫。data push 不觸發此 workflow。首次缺 key 會失敗，不會以範例替代 production。若部署失敗可手動重跑，當日資料會重新抓取覆寫。
+secret 讀不到時確認 environment 名稱為 **Env**。重跑舊 run 仍使用舊 workflow，修改後應啟動新 run。
 
-此專案取代 [舊 eBird 的 recent-hotspots](https://github.com/ChrisTorng/eBird)，舊 repo 保留 alerts 與搬遷入口。
-
-若顯示「請設定 EBIRD_API_KEY」但已建立 secret，請確認 environment 名稱：Environment secrets 只提供給引用該 environment 的 job；`Env` 的金鑰不會提供給 `github-pages`。本 workflow 已分開兩個 job，無需搬移金鑰。變更推送後啟動新的 workflow run；重跑舊 run 仍會使用舊版 workflow。
+參考：[GitHub Pages 發布來源設定](https://docs.github.com/en/pages/getting-started-with-github-pages/configuring-a-publishing-source-for-your-github-pages-site)。舊 [eBird repo](https://github.com/ChrisTorng/eBird) 保留 alerts 與搬遷入口。

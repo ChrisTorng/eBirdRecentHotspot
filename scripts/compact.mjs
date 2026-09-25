@@ -5,6 +5,7 @@ export function compactSnapshot(raw) {
   if (raw.schemaVersion !== 1 || !Array.isArray(raw.regions) || !raw.checklists) throw new Error('Invalid legacy snapshot');
   const checklists = Object.create(null), locations = Object.create(null), regionChecklists = Object.create(null);
   for (const region of raw.regions) {
+    if (raw.feedKind === 'daily' && region.code === 'TW') continue;
     const rows = raw.checklists[region.code];
     if (!Array.isArray(rows)) throw new Error(`Missing region feed: ${region.code}`);
     const ids = new Set();
@@ -26,7 +27,7 @@ export function compactSnapshot(raw) {
     regionChecklists[region.code] = [...ids];
   }
   return {
-    snapshot: { schemaVersion: 2, date: raw.date, fetchedAt: raw.fetchedAt, regions: raw.regions.map(({ code, name }) => ({ code, name })), regionChecklists, checklists },
+    snapshot: { schemaVersion: 2, ...(raw.feedKind === 'daily' ? { feedKind: 'daily', coverage: raw.coverage } : {}), date: raw.date, fetchedAt: raw.fetchedAt, regions: raw.regions.map(({ code, name }) => ({ code, name })), regionChecklists, checklists },
     locations
   };
 }

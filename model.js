@@ -50,6 +50,9 @@ export async function loadJson(url, fetcher = fetch) {
   return response.json();
 }
 export function regionRows(snapshot, code, catalog) {
+  if (snapshot.feedKind === 'daily' && code === 'TW') {
+    return snapshot.regions.filter(r => r.code !== 'TW').flatMap(r => regionRows(snapshot, r.code, catalog));
+  }
   if (snapshot.schemaVersion === 1) {
     if (!Array.isArray(snapshot.checklists?.[code])) throw new Error('地區清單格式錯誤');
     return snapshot.checklists[code];
@@ -103,4 +106,26 @@ export function groupChecklists(rows) {
     const species = day.map(r => r.numSpecies).filter(n => Number.isInteger(n) && n >= 0);
     return { ...group, count: group.rows.length, checklistCount: originalRows.length, observers: new Set(originalRows.map(r => r.userDisplayName).filter(Boolean)).size, latest, dayCount: day.length, average: species.length ? Math.round(species.reduce((a, b) => a + b, 0) / species.length) : null };
   }).sort((a, b) => b.count - a.count || b.rows[0].date.localeCompare(a.rows[0].date) || a.id.localeCompare(b.id));
+}
+
+export function dateRange(end, days = 4) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(end) || !Number.isInteger(days) || days < 1 || days > 31) throw new Error('日期或天數不正確（1–31 天）');
+  const time = Date.parse(`${end}T00:00:00Z`);
+  if (!Number.isFinite(time) || new Date(time).toISOString().slice(0, 10) !== end) throw new Error('日期不正確');
+  return Array.from({ length: days }, (_, i) => new Date(time - i * 86400000).toISOString().slice(0, 10));
+}
+export function rangeRows(snapshots, code, catalog, dates) {
+  const rows = new Map();
+  const dailyDates = new Set(snapshots.filter(s => s.feedKind === 'daily' && s.regions.some(r => r.code === code)).map(s => s.date));
+  // Newest fetch wins when a legacy snapshot also contains the same checklist.
+  for (const snapshot of [...snapshots].sort((a, b) => b.fetchedAt.localeCompare(a.fetchedAt))) {
+    if (!snapshot.regions.some(r => r.code === code)) continue;
+    for (const row of regionRows(snapshot, code, catalog)) {
+      // A refreshed daily feed replaces that date, including removals. Do not
+      // resurrect deleted entries from overlapping legacy recent-list files.
+      if (snapshot.feedKind !== 'daily' && dailyDates.has(observationDate(row).slice(0, 10))) continue;
+      if (!rows.has(row.subId)) rows.set(row.subId, row);
+    }
+  }
+  return [...rows.values()].filter(row => dates.includes(observationDate(row).slice(0, 10)));
 }

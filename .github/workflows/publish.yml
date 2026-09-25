@@ -72,6 +72,15 @@ jobs:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - name: Require Actions Pages source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source=$(gh api "repos/$GITHUB_REPOSITORY/pages" --jq .build_type)
+          if [ "$source" != "workflow" ]; then
+            echo "::error::Settings → Pages → Source must be GitHub Actions. Branch publishing omits data and can overwrite this deployment."
+            exit 1
+          fi
       - uses: actions/configure-pages@v5
       - name: Deploy Pages
         id: deployment

@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile, rename } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { dateRange } from '../model.js';
 import { compactSnapshot } from './compact.mjs';
 
 export function taiwanDate(now = new Date()) {
@@ -24,19 +25,29 @@ export async function api(path, key, { fetcher = fetch, sleep = ms => new Promis
     }
   }
 }
-export async function collect({ key, request = path => api(path, key), now = new Date() } = {}) {
+export async function collect({ key, request = path => api(path, key), now = new Date(), date = taiwanDate(now), subdivisions: suppliedRegions } = {}) {
+  dateRange(date, 1);
   if (!key) throw new Error('請設定 EBIRD_API_KEY；離線開發請執行 npm run examples。');
-  const subdivisions = await request('ref/region/list/subnational1/TW?fmt=json');
+  const subdivisions = suppliedRegions || await request('ref/region/list/subnational1/TW?fmt=json');
   if (!Array.isArray(subdivisions) || !subdivisions.length || subdivisions.some(r => !/^TW-[A-Z0-9]+$/.test(r.code) || typeof r.name !== 'string')) throw new Error('Invalid Taiwan regions');
   const regions = [{ code: 'TW', name: '台灣' }, ...subdivisions];
   if (new Set(regions.map(r => r.code)).size !== regions.length) throw new Error('Duplicate regions');
-  const checklists = {};
-  for (const { code } of regions) {
-    const rows = await request(`product/lists/${code}?maxResults=200`);
+  const checklists = {}, coverage = {};
+  for (const { code } of subdivisions) {
+    const rows = await request(`product/lists/${code}/${date.split('-').map(Number).join('/')}?maxResults=200&sortKey=obs_dt`);
     if (!Array.isArray(rows) || rows.some(r => !r || typeof r !== 'object' || !r.subId || !r.locId || !r.loc)) throw new Error(`Invalid checklist feed: ${code}`);
     checklists[code] = rows;
+    coverage[code] = { count: rows.length, possiblyTruncated: rows.length >= 200 };
   }
-  return { schemaVersion: 1, date: taiwanDate(now), fetchedAt: now.toISOString(), regions, checklists };
+  return { schemaVersion: 1, date, fetchedAt: now.toISOString(), regions, checklists, feedKind: 'daily', coverage };
+}
+export async function collectDays({ key, request = path => api(path, key), now = new Date(), end = taiwanDate(now), days = 4 } = {}) {
+  const dates = dateRange(end, days);
+  if (!key) throw new Error('請設定 EBIRD_API_KEY；離線開發請執行 npm run examples。');
+  const subdivisions = await request('ref/region/list/subnational1/TW?fmt=json');
+  const snapshots = [];
+  for (const date of dates) snapshots.push(await collect({ key, request, now, date, subdivisions }));
+  return snapshots;
 }
 async function writeJson(path, value) {
   await mkdir(dirname(path), { recursive: true });
@@ -72,7 +83,9 @@ export async function saveSnapshot(root, snapshot) {
   await writeJson(resolve(root, 'index.json'), { schemaVersion: 1, latest: dates[0], dates });
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  const snapshot = await collect({ key: process.env.EBIRD_API_KEY });
-  await saveSnapshot(resolve(process.argv[2] || '.local-data'), snapshot);
-  console.log(`Saved ${snapshot.date}: ${snapshot.regions.length} regions`);
+  const snapshots = await collectDays({ key: process.env.EBIRD_API_KEY, end: process.argv[3], days: process.argv[4] === undefined ? 4 : Number(process.argv[4]) });
+  for (const snapshot of snapshots) {
+    await saveSnapshot(resolve(process.argv[2] || '.local-data'), snapshot);
+    console.log(`Saved ${snapshot.date}: ${Object.keys(snapshot.coverage).length} regions; capped: ${Object.entries(snapshot.coverage).filter(([, value]) => value.possiblyTruncated).map(([code]) => code).join(', ') || 'none'}`);
+  }
 }

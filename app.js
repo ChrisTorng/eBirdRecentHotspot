@@ -1,4 +1,4 @@
-import { dataRoot, loadJson, selectDate, groupChecklists, displayRegions, displayLocationName, regionRows } from './model.js';
+import { dataRoot, loadJson, selectDate, groupChecklists, displayRegions, displayLocationName, dateRange, rangeRows } from './model.js';
 const $ = id => document.getElementById(id);
 const page = new URL(window.location.href), root = dataRoot(page);
 let toggles = [];
@@ -108,36 +108,56 @@ function render(groups) {
     toggles.push(toggle); table.append(body);
   });
   const wrap = element('div', null, 'table-wrap'); wrap.tabIndex = 0;
-  wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', '熱門地點比較表，可橫向捲動');
+  wrap.setAttribute('role', 'region'); wrap.setAttribute('aria-label', '熱門地點比較表');
   wrap.append(table); $('results').replaceChildren(wrap);
 }
 async function load() {
-  $('retry').hidden = true; $('status').className = ''; $('status').textContent = '載入中…'; $('results').replaceChildren();
+  $('retry').hidden = true; $('coverage').hidden = true; $('status').className = ''; $('status').textContent = '載入中…'; $('results').replaceChildren();
   $('summary').textContent = ''; toggles = [];
   try {
     const index = await loadJson(new URL('index.json', root));
-    const requested = page.searchParams.get('date') || 'latest';
-    options($('date'), [['latest', `最新（${index.latest}）`], ...(Array.isArray(index.dates) ? index.dates : []).map(d => [d, d])], requested);
-    const date = selectDate(index, requested);
-    const snapshot = await loadJson(new URL(`snapshots/${date}.json`, root));
-    if (![1, 2].includes(snapshot.schemaVersion) || snapshot.date !== date || !Array.isArray(snapshot.regions) || !snapshot.regions.length) throw new Error('Snapshot 格式錯誤');
+    selectDate(index, 'latest'); // Validate index before constructing any snapshot URL.
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Taipei', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+    const requested = page.searchParams.get('date') || 'today';
+    const date = requested === 'today' ? (page.searchParams.get('data') === 'examples' ? index.latest : today) : selectDate(index, requested);
+    const days = Number(page.searchParams.get('days') || 4);
+    const dates = dateRange(date, days);
+    options($('date'), [['today', '今天'], ['latest', `最新（${index.latest}）`], ...index.dates.map(d => [d, d])], requested);
+    $('days').value = days;
+    const available = dates.filter(d => index.dates.includes(d));
+    // Legacy snapshots contain several observation days; include the latest one
+    // for a useful transition, but never claim it has complete daily coverage.
+    const files = [...new Set([...available, index.latest])];
+    const loaded = await Promise.all(files.map(async d => {
+      const snapshot = await loadJson(new URL(`snapshots/${d}.json`, root));
+      if (![1, 2].includes(snapshot.schemaVersion) || snapshot.date !== d || !Array.isArray(snapshot.regions) || !snapshot.regions.length) throw new Error('Snapshot 格式錯誤');
+      return snapshot;
+    }));
+    const snapshots = loaded.filter(s => dates.includes(s.date) || s.feedKind !== 'daily');
     const code = page.searchParams.get('location') || 'TW';
-    const regions = displayRegions(snapshot.regions);
+    const regions = displayRegions([...new Map(loaded.flatMap(s => s.regions).map(r => [r.code, r])).values()]);
     options($('region'), regions.map(r => [r.code, r.name]), code); renderRegions(regions, code);
     const region = regions.find(r => r.code === code);
     if (!region) throw new Error('找不到指定地區');
-    const catalog = snapshot.schemaVersion === 2 ? await loadJson(new URL('locations.json', root)) : null;
-    const groups = groupChecklists(regionRows(snapshot, code, catalog)); render(groups);
+    const catalog = snapshots.some(s => s.schemaVersion === 2) ? await loadJson(new URL('locations.json', root)) : null;
+    const groups = groupChecklists(rangeRows(snapshots, code, catalog, dates)); render(groups);
+    const warnings = [];
+    const missing = dates.filter(d => !snapshots.some(s => s.date === d && s.feedKind === 'daily'));
+    if (missing.length) warnings.push(`缺少逐日資料：${missing.join('、')}（不代表當日沒有紀錄）`);
+    const capped = snapshots.flatMap(s => Object.entries(s.coverage || {}).filter(([r, c]) => (code === 'TW' || r === code) && c.possiblyTruncated).map(([r]) => `${s.date} ${regions.find(region => region.code === r)?.name || r}`));
+    if (capped.length) warnings.push(`達 API 200 筆上限，可能不完整：${capped.join('、')}`);
+    if (snapshots.some(s => s.feedKind !== 'daily')) warnings.push('含舊版最近清單快照，僅顯示範圍內已取得的紀錄');
+    $('coverage').textContent = warnings.join('。'); $('coverage').hidden = !warnings.length;
     document.title = `${region.name} · ${date} · eBird 最近熱門地點`;
     $('region-title').textContent = region.name;
     $('summary').textContent = `${groups.length} 個地點 · ${groups.reduce((sum, g) => sum + g.count, 0)} 筆紀錄（${groups.reduce((sum, g) => sum + g.checklistCount, 0)} 份清單）`;
     $('source').href = `https://ebird.org/region/${encodeURIComponent(code)}/recent-checklists`;
-    const fetched = new Date(snapshot.fetchedAt);
+    const fetched = new Date(snapshots.map(s => s.fetchedAt).sort().at(-1) || '');
     const time = Number.isNaN(fetched.getTime()) ? '未知' : new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(fetched);
-    $('status').textContent = `${root.pathname.includes('examples') ? '示範資料 · ' : ''}資料日期 ${date} · 更新 ${time}（台灣時間）`;
+    $('status').textContent = `${root.pathname.includes('examples') ? '示範資料 · ' : ''}觀察日期 ${dates.at(-1)} ～ ${date} · 更新 ${time}（台灣時間）`;
   } catch (error) { $('status').textContent = error.message; $('status').className = 'error'; $('retry').hidden = false; }
 }
-for (const [id, param] of [['date', 'date'], ['region', 'location']]) $(id).addEventListener('change', () => { page.searchParams.set(param, $(id).value); window.location.assign(page); });
+for (const [id, param] of [['date', 'date'], ['region', 'location'], ['days', 'days']]) $(id).addEventListener('change', () => { page.searchParams.set(param, $(id).value); window.location.assign(page); });
 $('filters').addEventListener('submit', event => event.preventDefault());
 $('retry').addEventListener('click', load);
 for (const [id, open] of [['expand', true], ['collapse', false]]) $(id).addEventListener('click', () => toggles.forEach(toggle => toggle(open)));
