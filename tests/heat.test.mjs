@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dailyMetrics, scoringDates, heatForLocation, compareHeat } from '../heat.js';
+import { dailyMetrics, scoringDates, heatForLocation, compareHeat, sharedCurveMax, scoreFormula } from '../heat.js';
 import { summarize } from '../scripts/summaries.mjs';
 const row = (id, name, time = '08:00') => ({ subId: id, locId: 'L1', loc: { name: '測試' }, userDisplayName: name, numSpecies: 10, isoObsDate: `2026-09-24T${time}` });
 const approximately = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} != ${expected}`);
@@ -30,11 +30,11 @@ test('summary keeps only observation date, deduplicates counties, records qualit
 });
 
 const summary = (date, heat, quality = 'complete', unknown = 0) => ({date,quality:{'TW-TPE':quality},locations:heat === null ? {} : {L1:{heat,people:heat,checklists:heat,regions:['TW-TPE'],unknown}}});
-test('weighted score excludes today, crosses years and uses no extra penalty/bonus', () => {
-  assert.deepEqual(scoringDates('2026-01-01','2026-01-01'),['2025-12-31','2025-12-30','2025-12-29']);
+test('weighted score includes today, crosses years and uses no extra penalty/bonus', () => {
+  assert.deepEqual(scoringDates('2026-01-01','2026-01-01'),['2026-01-01','2025-12-31','2025-12-30']);
   const summaries = Object.fromEntries([['2026-09-21',2],['2026-09-22',4],['2026-09-23',6],['2026-09-24',100]].map(([d,h])=>[d,summary(d,h)]));
   const result = heatForLocation(summaries,'L1','2026-09-24','2026-09-24');
-  approximately(result.score, 4.6);
+  approximately(result.score, 52.6);
   assert.equal(result.series.length,14); assert.equal(result.series.at(-1).today,true);
   approximately(heatForLocation(summaries,'L1','2026-09-23','2026-09-24').score,4.6);
   // Presentation-range filtering does not enter the score API.
@@ -45,14 +45,14 @@ test('weighted score excludes today, crosses years and uses no extra penalty/bon
 test('missing data is not zero, capped/unknown days cannot produce a confident score', () => {
   const summaries = Object.fromEntries(['2026-09-21','2026-09-22','2026-09-23'].map(d=>[d,summary(d,2)]));
   summaries['2026-09-23']=summary('2026-09-23',null);
-  approximately(heatForLocation(summaries,'L1','2026-09-24','2026-09-24').score,1);
+  approximately(heatForLocation(summaries,'L1','2026-09-23','2026-09-24').score,1);
   summaries['2026-09-23']=summary('2026-09-23',null,'capped');
-  let result=heatForLocation(summaries,'L1','2026-09-24','2026-09-24');
+  let result=heatForLocation(summaries,'L1','2026-09-23','2026-09-24');
   assert.equal(result.score,null); assert.equal(result.points[0].value,null);
   summaries['2026-09-23']=summary('2026-09-23',2,'complete',1);
-  assert.equal(heatForLocation(summaries,'L1','2026-09-24','2026-09-24').score,null);
+  assert.equal(heatForLocation(summaries,'L1','2026-09-23','2026-09-24').score,null);
   delete summaries['2026-09-23'];
-  assert.equal(heatForLocation(summaries,'L1','2026-09-24','2026-09-24').score,null);
+  assert.equal(heatForLocation(summaries,'L1','2026-09-23','2026-09-24').score,null);
   const items=[{id:'B',heat:{score:null}},{id:'C',heat:{score:0}},{id:'A',heat:{score:3}}];
   assert.deepEqual(items.sort(compareHeat).map(x=>x.id),['A','C','B']);
 });
@@ -74,4 +74,19 @@ test('overwriting a day rebuilds the summary instead of retaining removed observ
     await writeFile(path, JSON.stringify(snapshot)); await buildSummaries(root);
     assert.deepEqual(JSON.parse(await readFile(join(root,'summaries/2026-09-24.json'))).locations,{});
   } finally { await rm(root,{recursive:true,force:true}); }
+});
+
+test('today-only surge counts provisionally, formula shows actual values, all charts share maximum', () => {
+  const summaries = {'2026-09-24':summary('2026-09-24',5.5,'open'),'2026-09-23':summary('2026-09-23',null),'2026-09-22':summary('2026-09-22',null)};
+  const heat = heatForLocation(summaries,'L1','2026-09-24','2026-09-24');
+  assert.equal(heat.score,2.75); assert.equal(heat.provisional,true);
+  assert.match(scoreFormula(heat), /5.5 × 50% \+ 0 × 30% \+ 0 × 20% = 2.75/);
+  assert.equal(heat.series.at(-1).quality,'open');
+  assert.equal(sharedCurveMax([{heat},{heat:{series:[{value:12},{value:null}]}}]),12);
+  summaries['2026-09-24']=summary('2026-09-24',null,'open');
+  const zero=heatForLocation(summaries,'L1','2026-09-24','2026-09-24');
+  // Retain known location membership for the zero observation case.
+  summaries['2026-09-23']=summary('2026-09-23',1);
+  assert.equal(heatForLocation(summaries,'L1','2026-09-24','2026-09-24').points[0].value,0);
+  assert.equal(zero.score,null); // No known location or county at all is still unknown.
 });

@@ -1,4 +1,4 @@
-import { heatForLocation, compareHeat, scoringDates } from './heat.js';
+import { heatForLocation, compareHeat, scoringDates, sharedCurveMax, scoreFormula } from './heat.js';
 import { dataRoot, loadJson, selectDate, groupChecklists, displayRegions, displayLocationName, dateRange, rangeRows, googleMapsUrl } from './model.js';
 const $ = id => document.getElementById(id);
 const page = new URL(window.location.href), root = dataRoot(page);
@@ -43,12 +43,11 @@ function svgNode(tag, attributes, text) {
   return node;
 }
 function pointLabel(p) {
-  return `${p.date}：${p.value === null ? '資料不足' : heatNumber(p.value)}${p.quality === 'partial' ? '（不完整）' : ''}${p.today ? '（今日未完整，不計分）' : ''}`;
+  return `${p.date}：${p.value === null ? '資料不足' : heatNumber(p.value)}${p.quality === 'partial' ? '（不完整）' : ''}${p.today ? '（今日累計）' : p.quality === 'open' ? '（截至擷取時累計）' : ''}`;
 }
-function curve(series) {
+function curve(series, max) {
   const figure = element('figure', null, 'heat-curve');
   const svg = svgNode('svg', { viewBox: '0 0 280 64', role: 'img', 'aria-label': '每日熱度：' + series.map(pointLabel).join('；') });
-  const max = Math.max(1, ...series.map(p => p.value || 0));
   const x = i => 8 + i * 264 / 13, y = v => 48 - v / max * 36;
   svg.append(svgNode('path', { d: 'M8 48H272', stroke: '#cddbcc', fill: 'none' }));
   series.forEach((p, i) => {
@@ -61,7 +60,7 @@ function curve(series) {
     const circle = svgNode('circle', { cx: x(i), cy: y(p.value), r: 3, fill: p.today || p.quality !== 'complete' ? '#fff' : '#245e48', stroke: '#245e48' });
     circle.append(svgNode('title', {}, pointLabel(p))); svg.append(circle);
   });
-  svg.append(svgNode('text', { x: 8, y: 62 }, shortDate(series[0].date)), svgNode('text', { x: 272, y: 62, 'text-anchor': 'end' }, shortDate(series.at(-1).date)), svgNode('text', { x: 272, y: 9, 'text-anchor': 'end' }, `最高 ${heatNumber(max)}`));
+  svg.append(svgNode('text', { x: 8, y: 62 }, shortDate(series[0].date)), svgNode('text', { x: 272, y: 62, 'text-anchor': 'end' }, shortDate(series.at(-1).date)));
   figure.append(svg); return figure;
 }
 function render(groups) {
@@ -69,8 +68,9 @@ function render(groups) {
   if (!groups.length) { $('results').replaceChildren(element('p', '所選範圍沒有已取得的紀錄，可切換地區或日期。', 'empty-state')); return; }
   const table = element('table', null, 'hotspot-table');
   table.append(element('caption', '依近期熱度排序；資料不足的鳥點列於其後。展開可看統計與清單。', 'sr-only'));
+  const maximum = sharedCurveMax(groups);
   const header = element('tr');
-  for (const text of ['鳥點名稱', '近期熱度', '每日熱度 · 14 天', '鳥點', '地圖']) { const th = element('th', text); th.scope = 'col'; header.append(th); }
+  for (const text of ['鳥點名稱', '近期熱度', '每日熱度 · 14 天', '鳥點', '鳥圖', '地圖']) { const th = element('th', text); th.scope = 'col'; if (text === '近期熱度') th.title = '最後日期、前一天、前兩天以 50%／30%／20% 加權；當日已取得資料也計入，未結束日顯示暫計。不因展示天數改變評分期間。'; if (text.startsWith('每日熱度')) th.append(element('small', `共用尺度 0–${heatNumber(maximum)}`)); header.append(th); }
   const head = element('thead'); head.append(header); table.append(head);
   groups.forEach((group, index) => {
     const body = element('tbody', null, 'location-group'), row = element('tr', null, 'group-row');
@@ -79,18 +79,21 @@ function render(groups) {
     const arrow = element('span', '▸', 'toggle-icon'); arrow.setAttribute('aria-hidden', 'true');
     button.append(arrow, element('span', displayLocationName(group.name), 'location-name')); name.append(button);
     const score = element('td', null, 'heat-cell');
-    score.append(element('strong', heatNumber(group.heat.score)), element('small', group.heat.score === null ? '資料不足' : '近期熱度'));
-    score.title = `評分日期：${group.heat.scoreDays.join('、')}；權重 50%、30%、20%。缺日、上限或缺鳥友名稱時不計分。`;
-    const graph = element('td', null, 'curve-cell'); graph.append(curve(group.heat.series));
+    score.append(element('strong', heatNumber(group.heat.score)), element('small', group.heat.score === null ? '資料不足' : group.heat.provisional ? '暫計' : '近期熱度'));
+    score.title = scoreFormula(group.heat);
+    const graph = element('td', null, 'curve-cell'); graph.append(curve(group.heat.series, maximum));
+    const birdMap = element('td', null, 'birdmap-cell');
+    if (group.hotspot) birdMap.append(link('鳥圖', `https://ebird.org/hotspots?hs=${encodeURIComponent(group.id)}`));
+    else birdMap.append(element('span', '—', 'unavailable'));
     const bird = element('td', null, 'bird-cell'), map = element('td', null, 'map-cell');
     if (group.hotspot) bird.append(link('鳥點', `https://ebird.org/hotspot/${encodeURIComponent(group.id)}/bird-list?yr=curM`));
-    else { const person = group.rows.find(r => r.subId); bird.append(person ? link('個人鳥點', `https://ebird.org/checklist/${encodeURIComponent(person.subId)}`) : element('span', '個人鳥點')); bird.title = '透過最新清單查看個人鳥點'; }
+    else bird.append(element('span', '個人鳥點'));
     const mapUrl = googleMapsUrl(group.coordinates);
     if (mapUrl) map.append(link('地圖', mapUrl));
     else { map.append(element('span', '地圖', 'unavailable')); map.title = '尚無座標，待重新擷取補齊'; }
-    row.append(name, score, graph, bird, map); body.append(row);
+    row.append(name, score, graph, bird, birdMap, map); body.append(row);
     const detail = element('tr', null, 'expanded-row'); detail.id = `details-${index}`; detail.hidden = true;
-    const cell = element('td'); cell.colSpan = 5;
+    const cell = element('td'); cell.colSpan = 6;
     cell.append(element('p', `所選範圍 ${group.count} 筆紀錄／${group.observers} 位鳥友名稱 · 合併顯示 ${group.displayCount} 列 · 最近 ${shortDate(group.latest)} · 最近一天平均 ${group.average ?? '—'} 種／${group.dayCount} 筆清單`, 'detail-stats'));
     const daily = element('details', null, 'daily-values'); daily.append(element('summary', '每日熱度數值與資料狀態'));
     const values = element('ul');
@@ -148,6 +151,8 @@ async function load() {
     const region = regions.find(r => r.code === code);
     if (!region) throw new Error('找不到指定地區');
     const catalog = snapshots.some(s => s.schemaVersion === 2) ? await loadJson(new URL('locations.json', root)) : null;
+    const lastUpdate = new Date(catalog?.updatedAt || loaded.map(s => s.fetchedAt).sort().at(-1) || '');
+    $('last-update').textContent = `最近更新：${Number.isNaN(lastUpdate.getTime()) ? '未知' : new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(lastUpdate)}（台灣）`;
     const summaryDates = dateRange(date, 14).filter(d => index.dates.includes(d));
     const summaries = Object.fromEntries(await Promise.all(summaryDates.map(async d => {
       const summary = await loadJson(new URL(`summaries/${d}.json`, root));
@@ -155,7 +160,7 @@ async function load() {
       return [d, summary];
     })));
     const groups = groupChecklists(rangeRows(snapshots, code, catalog, dates)).map(group => ({ ...group, heat: heatForLocation(summaries, group.id, date, today) })).sort(compareHeat); render(groups);
-    $('score-info').textContent = `評分截至 ${scoringDates(date, today)[0]} · 三日加權 50%／30%／20%，不含今天；曲線固定 14 天，空心點為今日或不完整資料，缺日斷線。`;
+    $('score-info').textContent = `評分截至 ${scoringDates(date, today)[0]} · 三日加權 50%／30%／20%，含當日已取得資料；曲線固定 14 天，共用尺度 0–${heatNumber(sharedCurveMax(groups))}，空心點為今日或不完整資料，缺日斷線。`;
     const warnings = [];
     const missing = dates.filter(d => !snapshots.some(s => s.date === d && s.feedKind === 'daily'));
     if (missing.length) warnings.push(`缺少逐日資料：${missing.join('、')}（不代表當日沒有紀錄）`);
@@ -170,7 +175,7 @@ async function load() {
     const fetched = new Date(snapshots.map(s => s.fetchedAt).sort().at(-1) || '');
     const time = Number.isNaN(fetched.getTime()) ? '未知' : new Intl.DateTimeFormat('zh-TW', { timeZone: 'Asia/Taipei', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(fetched);
     $('status').textContent = `${root.pathname.includes('examples') ? '示範資料 · ' : ''}觀察日期 ${dates.at(-1)} ～ ${date} · 更新 ${time}（台灣時間）`;
-  } catch (error) { $('status').textContent = error.message; $('status').className = 'error'; $('retry').hidden = false; }
+  } catch (error) { if ($('last-update').textContent.includes('載入中')) $('last-update').textContent = '最近更新：無法取得'; $('status').textContent = error.message; $('status').className = 'error'; $('retry').hidden = false; }
 }
 for (const [id, param] of [['date', 'date'], ['region', 'location'], ['days', 'days']]) $(id).addEventListener('change', () => { page.searchParams.set(param, $(id).value); window.location.assign(page); });
 $('filters').addEventListener('submit', event => event.preventDefault());
