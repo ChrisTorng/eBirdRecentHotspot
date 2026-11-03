@@ -4,7 +4,7 @@ on:
     branches: [main]
   workflow_dispatch:
   schedule:
-    - cron: '0 0 * * *' # Taiwan 08:00; GitHub may delay scheduled runs
+    - cron: '0 23 * * *' # Taiwan 07:00; GitHub may delay scheduled runs
 permissions:
   contents: read
 concurrency:
